@@ -23,7 +23,7 @@ set -e -u
 
 
 ## Set up the directory that will contain the necessary directories
-PROJECTROOT=${PWD}/fmriprep
+PROJECTROOT=${PWD}/fmriprep_dec15f
 if [[ -d ${PROJECTROOT} ]]
 then
     echo ${PROJECTROOT} already exists
@@ -44,6 +44,7 @@ then
     echo "Required argument is an identifier of the BIDS source"
     # exit 1
 fi
+
 
 # Is it a directory on the filesystem?
 BIDS_INPUT_METHOD=clone
@@ -67,6 +68,7 @@ cd ${PROJECTROOT}
 input_store="ria+file://${PROJECTROOT}/input_ria"
 output_store="ria+file://${PROJECTROOT}/output_ria"
 
+
 # Create a source dataset with all analysis components as an analysis access
 # point.
 datalad create -c yoda analysis
@@ -75,8 +77,10 @@ cd analysis
 # create dedicated input and output locations. Results will be pushed into the
 # output sibling and the analysis will start with a clone from the input sibling.
 datalad create-sibling-ria -s output "${output_store}"
+# dj: not used
 pushremote=$(git remote get-url --push output)
 datalad create-sibling-ria -s input --storage-sibling off "${input_store}"
+
 
 # register the input dataset
 if [[ "${BIDS_INPUT_METHOD}" == "clone" ]]
@@ -84,6 +88,7 @@ then
     echo "Cloning input dataset into analysis dataset"
     datalad clone -d . ${BIDSINPUT} inputs/data
     # amend the previous commit with a nicer commit message
+
     git commit --amend -m 'Register input data dataset as a subdataset'
 else
     echo "WARNING: copying input data into repository"
@@ -92,60 +97,45 @@ else
     datalad save -r -m "added input data"
 fi
 
-SUBJECTS=$(find inputs/data -type d -name 'sub-*' | cut -d '/' -f 3 )
+# dj: using subset for testing
+SUBJECTS=$(find inputs/data -type d -name 'sub-NDARZZ*' | cut -d '/' -f 3 )
 if [ -z "${SUBJECTS}" ]
 then
     echo "No subjects found in input data"
     # exit 1
 fi
 
-set +u
-CONTAINERDS=$2
-set -u
-#if [[ ! -z "${CONTAINERDS}" ]]; then
-cd ${PROJECTROOT}
-datalad clone ${CONTAINERDS} pennlinc-containers
-## Add the containers as a subdataset
-#datalad clone ria+ssh://sciget.pmacs.upenn.edu:/project/bbl_projects/containers#~pennlinc-containers pennlinc-containers
-# download the image so we don't ddos pmacs
-cd pennlinc-containers
-datalad get -r .
-# get rid of the references to pmacs
-set +e
-datalad siblings remove -s pmacs-ria-storage
-datalad siblings remove -s origin
-set -e
-
-cd ${PROJECTROOT}/analysis
-datalad install -d . --source ${PROJECTROOT}/pennlinc-containers
+#dj: should we change this part?
+CONTAINERDS=///repronim/containers
+datalad install -d . --source ${CONTAINERDS}
+datalad get containers/images/bids/bids-fmriprep--20.2.3.sing
 
 ## the actual compute job specification
 cat > code/participant_job.sh << "EOT"
 #!/bin/bash
-#$ -S /bin/bash
-#$ -l h_vmem=25G
-#$ -l tmpfree=200G
-#$ -R y 
-#$ -l h_rt=24:00:00
-# Set up the correct conda environment
-source ${CONDA_PREFIX}/bin/activate base
-echo I\'m in $PWD using `which python`
 
+# Set up the correct conda environment
+
+module load openmind/singularity/3.5.0
+echo SINGULARITY `singularity --help`
+source ${CONDA_PREFIX}/bin/activate datalad
+
+echo I\'m in $PWD using `which python`
 # fail whenever something is fishy, use -x to get verbose logfiles
 set -e -u -x
-
 # Set up the remotes and get the subject id from the call
+args=($@)
 dssource="$1"
 pushgitremote="$2"
 subid="$3"
-
+job_id="$4"
+echo SUBID: $subid
 # change into the cluster-assigned temp directory. Not done by default in SGE
-cd ${CBICA_TMPDIR}
+cd ${TMPDIR}
 # OR Run it on a shared network drive
 # cd /cbica/comp_space/$(basename $HOME)
-
 # Used for the branch names and the temp dir
-BRANCH="job-${JOB_ID}-${subid}"
+BRANCH="job-${job_id}-${subid}"
 mkdir ${BRANCH}
 cd ${BRANCH}
 
@@ -183,17 +173,18 @@ datalad get -n "inputs/data/${subid}"
 
 # ------------------------------------------------------------------------------
 # Do the run!
-
+# TODO: Be sure the actual path to the fmriprep container is correct
+# TODO FIX path!!
 datalad run \
     -i code/fmriprep_zip.sh \
     -i inputs/data/${subid} \
     -i inputs/data/*json \
-    -i pennlinc-containers/.datalad/environments/fmriprep-20-2-3/image \
+    -i containers/images/bids/bids-fmriprep--20.2.3.sing \
     --explicit \
     -o ${subid}_fmriprep-20.2.3.zip \
     -o ${subid}_freesurfer-20.2.3.zip \
     -m "fmriprep:20.2.3 ${subid}" \
-    "bash ./code/fmriprep_zip.sh ${subid}"
+    "bash code/fmriprep_zip.sh ${subid}"
 
 # file content first -- does not need a lock, no interaction with Git
 datalad push --to output-storage
@@ -203,7 +194,7 @@ flock $DSLOCKFILE git push outputstore
 echo TMPDIR TO DELETE
 echo ${BRANCH}
 
-datalad uninstall -r --nocheck --if-dirty ignore inputs/data
+datalad uninstall -r --if-dirty ignore inputs/data
 datalad drop -r . --nocheck
 git annex dead here
 cd ../..
@@ -218,41 +209,43 @@ chmod +x code/participant_job.sh
 cat > code/fmriprep_zip.sh << "EOT"
 #!/bin/bash
 set -e -u -x
-
 subid="$1"
 mkdir -p ${PWD}/.git/tmp/wdir
+# TODO: fix path to singularity image
 singularity run --cleanenv -B ${PWD} \
-    pennlinc-containers/.datalad/environments/fmriprep-20-2-3/image \
+    containers/images/bids/bids-fmriprep--20.2.3.sing \
     inputs/data \
     prep \
     participant \
-    -w ${PWD}/.git/tmp/wkdir \
+    -w ${PWD}/.git/wkdir \
     --n_cpus 1 \
     --stop-on-first-crash \
     --fs-license-file code/license.txt \
     --skip-bids-validation \
-    --output-spaces MNI152NLin6Asym:res-2 \
+    --use-aroma \
+    --output-spaces MNI152NLin6Asym:res-2 anat \
     --participant-label "$subid" \
     --force-bbr \
     --cifti-output 91k -v -v
-
 cd prep
 7z a ../${subid}_fmriprep-20.2.3.zip fmriprep
 7z a ../${subid}_freesurfer-20.2.3.zip freesurfer
 rm -rf prep .git/tmp/wkdir
-
 EOT
 
 chmod +x code/fmriprep_zip.sh
-cp ${FREESURFER_HOME}/license.txt code/license.txt
+#cp ${FREESURFER_HOME}/license.txt code/license.txt
+#REMOVE THIS LATER
+cp /om2/user/smeisler/TheWay/scripts/mit_slurm/license.txt code/license.txt
 
 mkdir logs
-echo .SGE_datalad_lock >> .gitignore
+echo .SLURM_datalad_lock >> .gitignore
 echo logs >> .gitignore
 
 datalad save -m "Participant compute job implementation"
 
 # Add a script for merging outputs
+# dj: not used
 MERGE_POSTSCRIPT=https://raw.githubusercontent.com/PennLINC/TheWay/main/scripts/cubic/merge_outputs_postscript.sh
 cat > code/merge_outputs.sh << "EOT"
 #!/bin/bash
@@ -263,24 +256,49 @@ echo "outputsource=${output_store}#$(datalad -f '{infos[dataset][id]}' wtf -S da
 echo "cd ${PROJECTROOT}" >> code/merge_outputs.sh
 wget -qO- ${MERGE_POSTSCRIPT} >> code/merge_outputs.sh
 
+dssource="${input_store}#$(datalad -f '{infos[dataset][id]}' wtf -S dataset)"
+pushgitremote=$(git remote get-url --push output)
+
 
 ################################################################################
-# SGE SETUP START - remove or adjust to your needs
+# SLURM SETUP START - remove or adjust to your needs
 ################################################################################
-env_flags="-v DSLOCKFILE=${PWD}/.SGE_datalad_lock"
-echo '#!/bin/bash' > code/qsub_calls.sh
+env_flags="--export=DSLOCKFILE=${PWD}/.SLURM_datalad_lock"
+
+cat > code/sbatch_array.sh <<EOF
+#!/bin/bash
+#SBATCH --job-name=fp_test
+#SBATCH --partition=gablab
+##SBATCH --mem=25GB
+#SBATCH --time=20:00
+##SBATCH --time=4-00:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem-per-cpu=8G
+
+#SBATCH --output=logs/array_%A_%a.out
+#SBATCH --error=logs/array_%A_%a.err
+
+#SBATCH --export=DSLOCKFILE=${PROJECTROOT}/analysis/.SLURM_datalad_lock,CONDA_PREFIX=/om2/user/djarecka/miniconda
+
+#SBATCH --array=0-1
+
+subjects=(${SUBJECTS})
+sub=\${subjects[\$SLURM_ARRAY_TASK_ID]}
+
+${PROJECTROOT}/analysis/code/participant_job.sh ${dssource} ${pushgitremote} \$sub \$SLURM_JOB_ID
+
+EOF
+
+
 dssource="${input_store}#$(datalad -f '{infos[dataset][id]}' wtf -S dataset)"
 pushgitremote=$(git remote get-url --push output)
 eo_args="-e ${PWD}/logs -o ${PWD}/logs"
-for subject in ${SUBJECTS}; do
-  echo "qsub -cwd ${env_flags} -N fp${subject} ${eo_args} \
-  ${PWD}/code/participant_job.sh \
-  ${dssource} ${pushgitremote} ${subject} " >> code/qsub_calls.sh
-done
-datalad save -m "SGE submission setup" code/ .gitignore
+
+datalad save -m "SLURM submission setup" code/ .gitignore
 
 ################################################################################
-# SGE SETUP END
+# SLURM SETUP END
 ################################################################################
 
 # cleanup - we have generated the job definitions, we do not need to keep a
