@@ -23,7 +23,7 @@ set -e -u
 
 
 ## Set up the directory that will contain the necessary directories
-PROJECTROOT=${PWD}/fmriprep_dec15f
+PROJECTROOT=${PWD}/fmriprep_dec20
 if [[ -d ${PROJECTROOT} ]]
 then
     echo ${PROJECTROOT} already exists
@@ -44,7 +44,6 @@ then
     echo "Required argument is an identifier of the BIDS source"
     # exit 1
 fi
-
 
 # Is it a directory on the filesystem?
 BIDS_INPUT_METHOD=clone
@@ -68,7 +67,6 @@ cd ${PROJECTROOT}
 input_store="ria+file://${PROJECTROOT}/input_ria"
 output_store="ria+file://${PROJECTROOT}/output_ria"
 
-
 # Create a source dataset with all analysis components as an analysis access
 # point.
 datalad create -c yoda analysis
@@ -81,14 +79,12 @@ datalad create-sibling-ria -s output "${output_store}"
 pushremote=$(git remote get-url --push output)
 datalad create-sibling-ria -s input --storage-sibling off "${input_store}"
 
-
 # register the input dataset
 if [[ "${BIDS_INPUT_METHOD}" == "clone" ]]
 then
     echo "Cloning input dataset into analysis dataset"
     datalad clone -d . ${BIDSINPUT} inputs/data
     # amend the previous commit with a nicer commit message
-
     git commit --amend -m 'Register input data dataset as a subdataset'
 else
     echo "WARNING: copying input data into repository"
@@ -130,6 +126,7 @@ pushgitremote="$2"
 subid="$3"
 job_id="$4"
 echo SUBID: $subid
+echo TMPDIR: $TMPDIR
 # change into the cluster-assigned temp directory. Not done by default in SGE
 cd ${TMPDIR}
 # OR Run it on a shared network drive
@@ -194,7 +191,7 @@ flock $DSLOCKFILE git push outputstore
 echo TMPDIR TO DELETE
 echo ${BRANCH}
 
-datalad uninstall -r --if-dirty ignore inputs/data
+datalad uninstall -r --nocheck --if-dirty ignore inputs/data
 datalad drop -r . --nocheck
 git annex dead here
 cd ../..
@@ -217,7 +214,7 @@ singularity run --cleanenv -B ${PWD} \
     inputs/data \
     prep \
     participant \
-    -w ${PWD}/.git/wkdir \
+    -w ${PWD}/.git/tmp/wkdir \
     --n_cpus 1 \
     --stop-on-first-crash \
     --fs-license-file code/license.txt \
@@ -279,7 +276,7 @@ cat > code/sbatch_array.sh <<EOF
 #SBATCH --output=logs/array_%A_%a.out
 #SBATCH --error=logs/array_%A_%a.err
 
-#SBATCH --export=DSLOCKFILE=${PROJECTROOT}/analysis/.SLURM_datalad_lock,CONDA_PREFIX=/om2/user/djarecka/miniconda
+#SBATCH --export=DSLOCKFILE=${PROJECTROOT}/analysis/.SLURM_datalad_lock,CONDA_PREFIX=/om2/user/djarecka/miniconda,TMPDIR=/om2/scratch/Thu/djarecka/bootstrap
 
 #SBATCH --array=0-1
 
