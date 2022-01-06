@@ -9,6 +9,7 @@
 #    exit $?
 #fi
 
+
 DATALAD_VERSION=$(datalad --version)
 
 if [ $? -gt 0 ]; then
@@ -23,7 +24,7 @@ set -e -u
 
 
 ## Set up the directory that will contain the necessary directories
-PROJECTROOT=${PWD}/fmriprep_dec21a
+PROJECTROOT=${PWD}/fmriprep_jan4a
 if [[ -d ${PROJECTROOT} ]]
 then
     echo ${PROJECTROOT} already exists
@@ -36,22 +37,37 @@ then
     # exit 1
 fi
 
+while getopts i:t:v: flag
+do
+    case "${flag}" in
+        i) BIDSINPUT=${OPTARG};;
+        t) TMPDIR=${OPTARG};;
+	v) VERSION=${OPTARG};;
+    esac
+done
+
 
 ## Check the BIDS input
-BIDSINPUT=$1
 if [[ -z ${BIDSINPUT} ]]
 then
-    echo "Required argument is an identifier of the BIDS source"
+    echo "BIDS source is required, use -i flag"
     # exit 1
 fi
 
 ## Check the BIDS input
-TMPDIR=$2
 if [[ -z ${TMPDIR} ]]
 then
-    echo "Second required argument is TMPDIR"
+    echo "TMPDIR argument is required, use -t flag"
     # exit 1
 fi
+echo "TMPDIR $TMPDIR"
+
+## Check the fmriprep version
+if [[ -z ${VERSION} ]]
+then
+    echo "fmriprep version is required, use -v flag"
+fi
+echo "fmriprep version:  $VERSION"
 
 
 # Is it a directory on the filesystem?
@@ -113,7 +129,7 @@ fi
 #dj: should we change this part?
 CONTAINERDS=///repronim/containers
 datalad install -d . --source ${CONTAINERDS}
-datalad get containers/images/bids/bids-fmriprep--20.2.3.sing
+datalad get containers/images/bids/bids-fmriprep--${VERSION}.sing
 
 ## the actual compute job specification
 cat > code/participant_job.sh << "EOT"
@@ -122,6 +138,8 @@ cat > code/participant_job.sh << "EOT"
 # Set up the correct conda environment
 
 module load openmind/singularity/3.5.0
+
+# assumin that there is a conda environment named datalad
 source ${CONDA_EXE///conda//activate} datalad
 
 echo I\'m in $PWD using `which python`
@@ -133,8 +151,10 @@ dssource="$1"
 pushgitremote="$2"
 subid="$3"
 job_id="$4"
+fmriprep_version="$5"
 echo SUBID: $subid
 echo TMPDIR: $TMPDIR
+echo fmriprep_version: $fmriprep_version
 # change into the cluster-assigned temp directory. Not done by default in SGE
 cd ${TMPDIR}
 # OR Run it on a shared network drive
@@ -184,12 +204,12 @@ datalad run \
     -i code/fmriprep_zip.sh \
     -i inputs/data/${subid} \
     -i inputs/data/*json \
-    -i containers/images/bids/bids-fmriprep--20.2.3.sing \
+    -i containers/images/bids/bids-fmriprep--${fmriprep_version}.sing \
     --explicit \
-    -o ${subid}_fmriprep-20.2.3.zip \
-    -o ${subid}_freesurfer-20.2.3.zip \
-    -m "fmriprep:20.2.3 ${subid}" \
-    "bash code/fmriprep_zip.sh ${subid}"
+    -o ${subid}_fmriprep-${fmriprep_version}.zip \
+    -o ${subid}_freesurfer-${fmriprep_version}.zip \
+    -m "fmriprep:${fmriprep_version} ${subid}" \
+    "bash code/fmriprep_zip.sh ${subid} ${fmriprep_version}"
 
 # file content first -- does not need a lock, no interaction with Git
 datalad push --to output-storage
@@ -215,10 +235,11 @@ cat > code/fmriprep_zip.sh << "EOT"
 #!/bin/bash
 set -e -u -x
 subid="$1"
+fmriprep_version="$2"
 mkdir -p ${PWD}/.git/tmp/wdir
 # TODO: fix path to singularity image
 singularity run --cleanenv -B ${PWD} \
-    containers/images/bids/bids-fmriprep--20.2.3.sing \
+    containers/images/bids/bids-fmriprep--${fmriprep_version}.sing \
     inputs/data \
     prep \
     participant \
@@ -233,8 +254,8 @@ singularity run --cleanenv -B ${PWD} \
     --force-bbr \
     --cifti-output 91k -v -v
 cd prep
-7z a ../${subid}_fmriprep-20.2.3.zip fmriprep
-7z a ../${subid}_freesurfer-20.2.3.zip freesurfer
+7z a ../${subid}_fmriprep-${fmriprep_version}.zip fmriprep
+7z a ../${subid}_freesurfer-${fmriprep_version}.zip freesurfer
 rm -rf prep .git/tmp/wkdir
 EOT
 
@@ -291,7 +312,7 @@ cat > code/sbatch_array.sh <<EOF
 subjects=(${SUBJECTS})
 sub=\${subjects[\$SLURM_ARRAY_TASK_ID]}
 
-${PROJECTROOT}/analysis/code/participant_job.sh ${dssource} ${pushgitremote} \$sub \$SLURM_JOB_ID
+${PROJECTROOT}/analysis/code/participant_job.sh ${dssource} ${pushgitremote} \$sub \$SLURM_JOB_ID ${VERSION}
 
 EOF
 
