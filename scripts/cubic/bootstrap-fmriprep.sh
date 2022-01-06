@@ -23,7 +23,7 @@ set -e -u
 
 
 ## Set up the directory that will contain the necessary directories
-PROJECTROOT=${PWD}/fmriprep_dec20
+PROJECTROOT=${PWD}/fmriprep_dec21a
 if [[ -d ${PROJECTROOT} ]]
 then
     echo ${PROJECTROOT} already exists
@@ -44,6 +44,15 @@ then
     echo "Required argument is an identifier of the BIDS source"
     # exit 1
 fi
+
+## Check the BIDS input
+TMPDIR=$2
+if [[ -z ${TMPDIR} ]]
+then
+    echo "Second required argument is TMPDIR"
+    # exit 1
+fi
+
 
 # Is it a directory on the filesystem?
 BIDS_INPUT_METHOD=clone
@@ -113,8 +122,7 @@ cat > code/participant_job.sh << "EOT"
 # Set up the correct conda environment
 
 module load openmind/singularity/3.5.0
-echo SINGULARITY `singularity --help`
-source ${CONDA_PREFIX}/bin/activate datalad
+source ${CONDA_EXE///conda//activate} datalad
 
 echo I\'m in $PWD using `which python`
 # fail whenever something is fishy, use -x to get verbose logfiles
@@ -276,7 +284,7 @@ cat > code/sbatch_array.sh <<EOF
 #SBATCH --output=logs/array_%A_%a.out
 #SBATCH --error=logs/array_%A_%a.err
 
-#SBATCH --export=DSLOCKFILE=${PROJECTROOT}/analysis/.SLURM_datalad_lock,CONDA_PREFIX=/om2/user/djarecka/miniconda,TMPDIR=/om2/scratch/Thu/djarecka/bootstrap
+#SBATCH --export=DSLOCKFILE=${PROJECTROOT}/analysis/.SLURM_datalad_lock,CONDA_EXE=${CONDA_EXE},TMPDIR=${TMPDIR}
 
 #SBATCH --array=0-1
 
