@@ -24,7 +24,7 @@ set -e -u
 
 
 ## Set up the directory that will contain the necessary directories
-PROJECTROOT=${PWD}/fmriprep_jan4a
+PROJECTROOT=${PWD}/fmriprep_jan24
 if [[ -d ${PROJECTROOT} ]]
 then
     echo ${PROJECTROOT} already exists
@@ -37,16 +37,17 @@ then
     # exit 1
 fi
 
-while getopts i:t:v: flag
+while getopts i:t:v:p: flag
 do
     case "${flag}" in
         i) BIDSINPUT=${OPTARG};;
-        t) TMPDIR=${OPTARG};;
+        t) JOB_TMPDIR=${OPTARG};;
 	v) VERSION=${OPTARG};;
+	p) PRESCRIPT=${OPTARG};;
     esac
 done
 
-
+echo "PRESCRIPT PATH" ${PRESCRIPT}
 ## Check the BIDS input
 if [[ -z ${BIDSINPUT} ]]
 then
@@ -55,12 +56,12 @@ then
 fi
 
 ## Check the BIDS input
-if [[ -z ${TMPDIR} ]]
+if [[ -z ${JOB_TMPDIR} ]]
 then
-    echo "TMPDIR argument is required, use -t flag"
+    echo "JOB TMPDIR argument is required, use -t flag"
     # exit 1
 fi
-echo "TMPDIR $TMPDIR"
+echo "JOB_TMPDIR $JOB_TMPDIR"
 
 ## Check the fmriprep version
 if [[ -z ${VERSION} ]]
@@ -69,6 +70,7 @@ then
 fi
 echo "fmriprep version:  $VERSION"
 
+# check prescript
 
 # Is it a directory on the filesystem?
 BIDS_INPUT_METHOD=clone
@@ -131,44 +133,41 @@ CONTAINERDS=///repronim/containers
 datalad install -d . --source ${CONTAINERDS}
 datalad get containers/images/bids/bids-fmriprep--${VERSION}.sing
 
+cd ${PROJECTROOT}/analysis
+
 ## the actual compute job specification
-cat > code/participant_job.sh << "EOT"
+cat > code/participant_job.sh << EOT
 #!/bin/bash
 
-# Set up the correct conda environment
+source $PRESCRIPT
 
-module load openmind/singularity/3.5.0
-
-# assumin that there is a conda environment named datalad
-source ${CONDA_EXE///conda//activate} datalad
-
-echo I\'m in $PWD using `which python`
+echo I\'m in \$PWD using `which python`
 # fail whenever something is fishy, use -x to get verbose logfiles
 set -e -u -x
 # Set up the remotes and get the subject id from the call
 args=($@)
-dssource="$1"
-pushgitremote="$2"
-subid="$3"
-job_id="$4"
-fmriprep_version="$5"
-echo SUBID: $subid
-echo TMPDIR: $TMPDIR
-echo fmriprep_version: $fmriprep_version
+dssource="\$1"
+pushgitremote="\$2"
+subid="\$3"
+job_id="\$4"
+echo SUBID: \${subid}
+echo TMPDIR: \${TMPDIR}
+echo TJOB_TMPDIR: \${JOB_TMPDIR}
+echo fmriprep_version: ${VERSION}
 # change into the cluster-assigned temp directory. Not done by default in SGE
-cd ${TMPDIR}
+cd \${JOB_TMPDIR}
 # OR Run it on a shared network drive
 # cd /cbica/comp_space/$(basename $HOME)
 # Used for the branch names and the temp dir
-BRANCH="job-${job_id}-${subid}"
-mkdir ${BRANCH}
-cd ${BRANCH}
+BRANCH="job-\${job_id}-\${subid}"
+mkdir \${BRANCH}
+cd \${BRANCH}
 
 # get the analysis dataset, which includes the inputs as well
 # importantly, we do not clone from the lcoation that we want to push the
 # results to, in order to avoid too many jobs blocking access to
 # the same location and creating a throughput bottleneck
-datalad clone "${dssource}" ds
+datalad clone "\${dssource}" ds
 
 # all following actions are performed in the context of the superdataset
 cd ds
@@ -181,49 +180,50 @@ cd ds
 # this remote is never fetched, it accumulates a larger number of branches
 # and we want to avoid progressive slowdown. Instead we only ever push
 # a unique branch per each job (subject AND process specific name)
-git remote add outputstore "$pushgitremote"
+git remote add outputstore "\$pushgitremote"
 
 # all results of this job will be put into a dedicated branch
-git checkout -b "${BRANCH}"
+git checkout -b "\${BRANCH}"
 
 # we pull down the input subject manually in order to discover relevant
 # files. We do this outside the recorded call, because on a potential
 # re-run we want to be able to do fine-grained recomputing of individual
 # outputs. The recorded calls will have specific paths that will enable
 # recomputation outside the scope of the original setup
-datalad get -n "inputs/data/${subid}"
+datalad get -n "inputs/data/\${subid}"
 
 # Reomve all subjects we're not working on
-(cd inputs/data && rm -rf `find . -type d -name 'sub*' | grep -v $subid`)
+(cd inputs/data && rm -rf `find . -type d -name 'sub*' | grep -v \$subid`)
 
 # ------------------------------------------------------------------------------
 # Do the run!
 # TODO: Be sure the actual path to the fmriprep container is correct
 # TODO FIX path!!
+echo Before running datalad run
 datalad run \
     -i code/fmriprep_zip.sh \
-    -i inputs/data/${subid} \
+    -i inputs/data/\${subid} \
     -i inputs/data/*json \
-    -i containers/images/bids/bids-fmriprep--${fmriprep_version}.sing \
+    -i containers/images/bids/bids-fmriprep--${VERSION}.sing \
     --explicit \
-    -o ${subid}_fmriprep-${fmriprep_version}.zip \
-    -o ${subid}_freesurfer-${fmriprep_version}.zip \
-    -m "fmriprep:${fmriprep_version} ${subid}" \
-    "bash code/fmriprep_zip.sh ${subid} ${fmriprep_version}"
+    -o \${subid}_fmriprep-${VERSION}.zip \
+    -o \${subid}_freesurfer-${VERSION}.zip \
+    -m "fmriprep:${VERSION} \${subid}" \
+    "bash code/fmriprep_zip.sh \${subid} ${VERSION}"
 
 # file content first -- does not need a lock, no interaction with Git
 datalad push --to output-storage
 # and the output branch
-flock $DSLOCKFILE git push outputstore
+flock \${DSLOCKFILE} git push outputstore
 
 echo TMPDIR TO DELETE
-echo ${BRANCH}
+echo \${BRANCH}
 
 datalad uninstall -r --nocheck --if-dirty ignore inputs/data
 datalad drop -r . --nocheck
 git annex dead here
 cd ../..
-rm -rf $BRANCH
+rm -rf \${BRANCH}
 
 echo SUCCESS
 # job handler should clean up workspace
@@ -238,6 +238,7 @@ subid="$1"
 fmriprep_version="$2"
 mkdir -p ${PWD}/.git/tmp/wdir
 # TODO: fix path to singularity image
+echo In fmriprep_zip before singularity; singularity version: `which singularity`
 singularity run --cleanenv -B ${PWD} \
     containers/images/bids/bids-fmriprep--${fmriprep_version}.sing \
     inputs/data \
@@ -305,14 +306,14 @@ cat > code/sbatch_array.sh <<EOF
 #SBATCH --output=logs/array_%A_%a.out
 #SBATCH --error=logs/array_%A_%a.err
 
-#SBATCH --export=DSLOCKFILE=${PROJECTROOT}/analysis/.SLURM_datalad_lock,CONDA_EXE=${CONDA_EXE},TMPDIR=${TMPDIR}
+#SBATCH --export=DSLOCKFILE=${PROJECTROOT}/analysis/.SLURM_datalad_lock,JOB_TMPDIR=${JOB_TMPDIR}
 
 #SBATCH --array=0-1
 
 subjects=(${SUBJECTS})
 sub=\${subjects[\$SLURM_ARRAY_TASK_ID]}
 
-${PROJECTROOT}/analysis/code/participant_job.sh ${dssource} ${pushgitremote} \$sub \$SLURM_JOB_ID ${VERSION}
+${PROJECTROOT}/analysis/code/participant_job.sh ${dssource} ${pushgitremote} \$sub \$SLURM_JOB_ID
 
 EOF
 
