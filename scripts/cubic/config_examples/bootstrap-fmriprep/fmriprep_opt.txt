@@ -1,0 +1,9 @@
+    --n_cpus 1 \
+    --stop-on-first-crash \
+    --fs-license-file code/license.txt \
+    --skip-bids-validation \
+    --use-aroma \
+    --output-spaces MNI152NLin6Asym:res-2 anat \
+    --participant-label "$subid" \
+    --force-bbr \
+    --cifti-output 91k -v -v

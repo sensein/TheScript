@@ -20,46 +20,51 @@ fi
 
 echo USING DATALAD VERSION ${DATALAD_VERSION}
 
-set -e -u
 
+while getopts i:t:v:p:f:o:s: flag
+do
+    case "${flag}" in
+        i) BIDSINPUT=${OPTARG};;
+        t) JOB_TMPDIR=${OPTARG};;
+        v) VERSION=${OPTARG};;
+        p) PRESCRIPT=${OPTARG};;
+        f) FMRIPREP_OPT_FILE=${OPTARG};;
+        o) PROJECTROOT=${OPTARG};;
+        s) SLURM_OPT_FILE=${OPTARG};;
+    esac
+done
 
 ## Set up the directory that will contain the necessary directories
-PROJECTROOT=${PWD}/fmriprep_jan24
+if [[ -z ${PROJECTROOT} ]]
+then
+    PROJECTROOT=${PWD}/fmriprep
+    echo PROJECTROOT set to ${PROJECTROOT}
+fi
+
 if [[ -d ${PROJECTROOT} ]]
 then
     echo ${PROJECTROOT} already exists
-    # exit 1
+    exit 1
 fi
 
 if [[ ! -w $(dirname ${PROJECTROOT}) ]]
 then
     echo Unable to write to ${PROJECTROOT}\'s parent. Change permissions and retry
-    # exit 1
+    exit 1
 fi
 
-while getopts i:t:v:p: flag
-do
-    case "${flag}" in
-        i) BIDSINPUT=${OPTARG};;
-        t) JOB_TMPDIR=${OPTARG};;
-	v) VERSION=${OPTARG};;
-	p) PRESCRIPT=${OPTARG};;
-    esac
-done
-
-echo "PRESCRIPT PATH" ${PRESCRIPT}
 ## Check the BIDS input
 if [[ -z ${BIDSINPUT} ]]
 then
     echo "BIDS source is required, use -i flag"
-    # exit 1
+    exit 1
 fi
 
-## Check the BIDS input
+## Check the JOB_TMPDIR
 if [[ -z ${JOB_TMPDIR} ]]
 then
     echo "JOB TMPDIR argument is required, use -t flag"
-    # exit 1
+    exit 1
 fi
 echo "JOB_TMPDIR $JOB_TMPDIR"
 
@@ -67,10 +72,29 @@ echo "JOB_TMPDIR $JOB_TMPDIR"
 if [[ -z ${VERSION} ]]
 then
     echo "fmriprep version is required, use -v flag"
+    exit 1
 fi
 echo "fmriprep version:  $VERSION"
 
-# check prescript
+# check the file with fmriprep options
+if [[ -z ${FMRIPREP_OPT_FILE} ]]
+then
+    echo "file with fmriprep options is required, use -f flag"
+    exit 1
+fi
+echo "file with fmriprep options:  $FMRIPREP_OPT_FILE"
+
+# check the file with SLURM options
+if [[ -z ${SLURM_OPT_FILE} ]]
+then
+    echo "file with SLURM options is required, use -s flag"
+    exit 1
+fi
+echo "file with SLURM options:  $SLURM_OPT_FILE"
+
+
+
+set -e -u
 
 # Is it a directory on the filesystem?
 BIDS_INPUT_METHOD=clone
@@ -238,22 +262,21 @@ subid="$1"
 fmriprep_version="$2"
 mkdir -p ${PWD}/.git/tmp/wdir
 # TODO: fix path to singularity image
-echo In fmriprep_zip before singularity; singularity version: `which singularity`
+echo FMRIPREP_VER: ${fmriprep_version}
+echo SUBID: ${subid}
+echo PWD: ${PWD}
+echo In fmriprep_zip before singularity;
 singularity run --cleanenv -B ${PWD} \
     containers/images/bids/bids-fmriprep--${fmriprep_version}.sing \
     inputs/data \
     prep \
     participant \
     -w ${PWD}/.git/tmp/wkdir \
-    --n_cpus 1 \
-    --stop-on-first-crash \
-    --fs-license-file code/license.txt \
-    --skip-bids-validation \
-    --use-aroma \
-    --output-spaces MNI152NLin6Asym:res-2 anat \
-    --participant-label "$subid" \
-    --force-bbr \
-    --cifti-output 91k -v -v
+EOT
+
+cat ${FMRIPREP_OPT_FILE} >> code/fmriprep_zip.sh
+
+cat >> code/fmriprep_zip.sh << "EOT"
 cd prep
 7z a ../${subid}_fmriprep-${fmriprep_version}.zip fmriprep
 7z a ../${subid}_freesurfer-${fmriprep_version}.zip freesurfer
@@ -292,23 +315,22 @@ pushgitremote=$(git remote get-url --push output)
 ################################################################################
 env_flags="--export=DSLOCKFILE=${PWD}/.SLURM_datalad_lock"
 
-cat > code/sbatch_array.sh <<EOF
-#!/bin/bash
-#SBATCH --job-name=fp_test
-#SBATCH --partition=gablab
-##SBATCH --mem=25GB
-#SBATCH --time=20:00
-##SBATCH --time=4-00:00:00
-#SBATCH --nodes=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem-per-cpu=8G
+# checking the length of the subjects list
+subjects_list=(${SUBJECTS}) 
+subjects_len=${#subjects_list[@]}
+ 
+echo '#!/bin/bash' > code/sbatch_array.sh
+
+cat ${SLURM_OPT_FILE} >> code/sbatch_array.sh
+
+cat >> code/sbatch_array.sh <<EOF
 
 #SBATCH --output=logs/array_%A_%a.out
 #SBATCH --error=logs/array_%A_%a.err
 
 #SBATCH --export=DSLOCKFILE=${PROJECTROOT}/analysis/.SLURM_datalad_lock,JOB_TMPDIR=${JOB_TMPDIR}
 
-#SBATCH --array=0-1
+#SBATCH --array=0-$((subjects_len-1))
 
 subjects=(${SUBJECTS})
 sub=\${subjects[\$SLURM_ARRAY_TASK_ID]}
