@@ -190,7 +190,7 @@ subid="\$3"
 job_id="\$4"
 echo SUBID: \${subid}
 echo TMPDIR: \${TMPDIR}
-echo TJOB_TMPDIR: \${JOB_TMPDIR}
+echo JOB_TMPDIR: \${JOB_TMPDIR}
 echo fmriprep_version: ${VERSION}
 # change into the cluster-assigned temp directory. Not done by default in SGE
 cd \${JOB_TMPDIR}
