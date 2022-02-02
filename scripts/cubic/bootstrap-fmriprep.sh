@@ -21,7 +21,7 @@ fi
 echo USING DATALAD VERSION ${DATALAD_VERSION}
 
 
-while getopts i:t:v:p:f:o:s: flag
+while getopts i:t:v:p:f:o:s:l: flag
 do
     case "${flag}" in
         i) BIDSINPUT=${OPTARG};;
@@ -31,6 +31,7 @@ do
         f) FMRIPREP_OPT_FILE=${OPTARG};;
         o) PROJECTROOT=${OPTARG};;
         s) SLURM_OPT_FILE=${OPTARG};;
+	l) FREESURFER_LICENSE=${OPTARG};;
     esac
 done
 
@@ -67,7 +68,6 @@ then
     exit 1
 fi
 echo "JOB_TMPDIR $JOB_TMPDIR"
-
 ## Check the fmriprep version
 if [[ -z ${VERSION} ]]
 then
@@ -92,6 +92,19 @@ then
 fi
 echo "file with SLURM options:  $SLURM_OPT_FILE"
 
+# setting freesurface license path
+# if license is not provided, checking for FREESURFER_HOME
+if [[ -z ${FREESURFER_LICENSE} ]]
+then
+  if [[ -z ${FREESURFER_HOME} ]]
+  then
+    echo "FREESURFER_HOME is not set, so license path required, use -l flag"
+    exit 1
+  else
+    FREESURFER_LICENSE=${FREESURFER_HOME}/license.txt
+  fi
+fi
+echo "freesurfer license file: $FREESURFER_LICENSE"
 
 
 set -e -u
@@ -160,10 +173,11 @@ datalad get containers/images/bids/bids-fmriprep--${VERSION}.sing
 cd ${PROJECTROOT}/analysis
 
 ## the actual compute job specification
-cat > code/participant_job.sh << EOT
-#!/bin/bash
+echo '#!/bin/bash' > code/participant_job.sh
 
-source $PRESCRIPT
+cat $PRESCRIPT >> code/participant_job.sh
+
+cat >> code/participant_job.sh << EOT
 
 echo I\'m in \$PWD using `which python`
 # fail whenever something is fishy, use -x to get verbose logfiles
@@ -284,9 +298,7 @@ rm -rf prep .git/tmp/wkdir
 EOT
 
 chmod +x code/fmriprep_zip.sh
-#cp ${FREESURFER_HOME}/license.txt code/license.txt
-#REMOVE THIS LATER
-cp /om2/user/smeisler/TheWay/scripts/mit_slurm/license.txt code/license.txt
+cp ${FREESURFER_LICENSE} code/license.txt
 
 mkdir logs
 echo .SLURM_datalad_lock >> .gitignore
