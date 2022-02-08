@@ -239,15 +239,15 @@ datalad get -n "inputs/data/\${subid}"
 # TODO FIX path!!
 echo Before running datalad run
 datalad run \
-    -i code/fmriprep_zip.sh \
+    -i code/fmriprep_run.sh \
     -i inputs/data/\${subid} \
     -i inputs/data/*json \
     -i containers/images/bids/bids-fmriprep--${VERSION}.sing \
     --explicit \
-    -o \${subid}_fmriprep-${VERSION}.zip \
-    -o \${subid}_freesurfer-${VERSION}.zip \
+    -o \${subid}_fmriprep-${VERSION} \
+    -o \${subid}_freesurfer-${VERSION} \
     -m "fmriprep:${VERSION} \${subid}" \
-    "bash code/fmriprep_zip.sh \${subid} ${VERSION}"
+    "bash code/fmriprep_run.sh \${subid} ${VERSION}"
 
 # file content first -- does not need a lock, no interaction with Git
 datalad push --to output-storage
@@ -269,7 +269,7 @@ EOT
 
 chmod +x code/participant_job.sh
 
-cat > code/fmriprep_zip.sh << "EOT"
+cat > code/fmriprep_run.sh << "EOT"
 #!/bin/bash
 set -e -u -x
 subid="$1"
@@ -279,7 +279,7 @@ mkdir -p ${PWD}/.git/tmp/wdir
 echo FMRIPREP_VER: ${fmriprep_version}
 echo SUBID: ${subid}
 echo PWD: ${PWD}
-echo In fmriprep_zip before singularity;
+echo In fmriprep_run before singularity;
 singularity run --cleanenv -B ${PWD} \
     containers/images/bids/bids-fmriprep--${fmriprep_version}.sing \
     inputs/data \
@@ -288,16 +288,16 @@ singularity run --cleanenv -B ${PWD} \
     -w ${PWD}/.git/tmp/wkdir \
 EOT
 
-cat ${FMRIPREP_OPT_FILE} >> code/fmriprep_zip.sh
+cat ${FMRIPREP_OPT_FILE} >> code/fmriprep_run.sh
 
-cat >> code/fmriprep_zip.sh << "EOT"
+cat >> code/fmriprep_run.sh << "EOT"
 cd prep
-7z a ../${subid}_fmriprep-${fmriprep_version}.zip fmriprep
-7z a ../${subid}_freesurfer-${fmriprep_version}.zip freesurfer
+mv fmriprep ../${subid}_fmriprep-${fmriprep_version}
+mv freesurfer  ../${subid}_freesurfer-${fmriprep_version}
 rm -rf prep .git/tmp/wkdir
 EOT
 
-chmod +x code/fmriprep_zip.sh
+chmod +x code/fmriprep_run.sh
 cp ${FREESURFER_LICENSE} code/license.txt
 
 mkdir logs
