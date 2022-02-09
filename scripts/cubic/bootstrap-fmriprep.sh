@@ -21,17 +21,18 @@ fi
 echo USING DATALAD VERSION ${DATALAD_VERSION}
 
 
-while getopts i:t:v:p:f:o:s:l: flag
+while getopts i:t:v:e:f:p:w:l:s: flag
 do
     case "${flag}" in
         i) BIDSINPUT=${OPTARG};;
         t) JOB_TMPDIR=${OPTARG};;
         v) VERSION=${OPTARG};;
-        p) PRESCRIPT=${OPTARG};;
+        e) PRESCRIPT=${OPTARG};;
         f) FMRIPREP_OPT_FILE=${OPTARG};;
-        o) PROJECTROOT=${OPTARG};;
-        s) SLURM_OPT_FILE=${OPTARG};;
+        p) PROJECTROOT=${OPTARG};;
+        w) SLURM_OPT_FILE=${OPTARG};;
 	l) FREESURFER_LICENSE=${OPTARG};;
+        s) SUBJECTS_SUBSET=${OPTARG};;
     esac
 done
 
@@ -158,11 +159,19 @@ else
 fi
 
 # dj: using subset for testing
-SUBJECTS=$(find inputs/data -type d -name 'sub-NDARZZ*' | cut -d '/' -f 3 )
+if [[ -z ${SUBJECTS_SUBSET} ]]
+then
+    SUBJECTS=$(find inputs/data -type d -name sub-* | cut -d '/' -f 3 )
+else
+    SUBJECTS=$(find inputs/data -type d -name ${SUBJECTS_SUBSET} | cut -d '/' -f 3 )
+fi
+
 if [ -z "${SUBJECTS}" ]
 then
     echo "No subjects found in input data"
-    # exit 1
+    exit 1
+else
+    echo "LIST OF SUBJECTS": ${SUBJECTS}
 fi
 
 #dj: should we change this part?
