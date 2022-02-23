@@ -6,4 +6,5 @@
     --output-spaces MNI152NLin6Asym:res-2 anat \
     --participant-label "$subid" \
     --force-bbr \
-    --cifti-output 91k -v -v
+    --cifti-output 91k -v -v \
+    --bids-filter-file code/fmriprep_filter.json

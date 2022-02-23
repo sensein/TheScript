@@ -21,7 +21,7 @@ fi
 echo USING DATALAD VERSION ${DATALAD_VERSION}
 
 
-while getopts i:t:v:e:f:p:w:l:s: flag
+while getopts i:t:v:e:f:p:w:l:s:c: flag
 do
     case "${flag}" in
         i) BIDSINPUT=${OPTARG};;
@@ -33,6 +33,7 @@ do
         w) SLURM_OPT_FILE=${OPTARG};;
 	l) FREESURFER_LICENSE=${OPTARG};;
         s) SUBJECTS_SUBSET=${OPTARG};;
+	c) COPY_DIR=${OPTARG};;
     esac
 done
 
@@ -158,7 +159,6 @@ else
     datalad save -r -m "added input data"
 fi
 
-# dj: using subset for testing
 if [[ -z ${SUBJECTS_SUBSET} ]]
 then
     SUBJECTS=$(find inputs/data -type d -name sub-* | cut -d '/' -f 3 )
@@ -308,6 +308,14 @@ EOT
 
 chmod +x code/fmriprep_run.sh
 cp ${FREESURFER_LICENSE} code/license.txt
+
+if [[ -z ${COPY_DIR} ]]
+then
+    echo "No COPY_DIR set, nothing is copied to code/"
+else
+    cp ${COPY_DIR}/* code/
+    echo "content of ${COPY_DIR} is copied to code/"
+fi
 
 mkdir logs
 echo .SLURM_datalad_lock >> .gitignore
