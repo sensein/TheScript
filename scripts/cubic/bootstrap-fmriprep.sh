@@ -108,6 +108,10 @@ then
 fi
 echo "freesurfer license file: $FREESURFER_LICENSE"
 
+if [[ -z ${COPY_DIR} ]]
+then
+    COPY_DIR=none
+fi
 
 set -e -u
 
@@ -309,7 +313,7 @@ EOT
 chmod +x code/fmriprep_run.sh
 cp ${FREESURFER_LICENSE} code/license.txt
 
-if [[ -z ${COPY_DIR} ]]
+if [[ "${COPY_DIR}" == "none" ]]
 then
     echo "No COPY_DIR set, nothing is copied to code/"
 else
