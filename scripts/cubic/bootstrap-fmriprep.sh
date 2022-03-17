@@ -170,6 +170,10 @@ else
     SUBJECTS=$(find inputs/data -type d -name ${SUBJECTS_SUBSET} | cut -d '/' -f 3 )
 fi
 
+echo "!!!PWD" ${PWD}
+echo "subject" ${SUBJECTS_SUBSET}
+
+
 if [ -z "${SUBJECTS}" ]
 then
     echo "No subjects found in input data"
@@ -194,6 +198,7 @@ cat >> code/participant_job.sh << EOT
 
 echo I\'m in \$PWD using `which python`
 # fail whenever something is fishy, use -x to get verbose logfiles
+PS4=+
 set -e -u -x
 # Set up the remotes and get the subject id from the call
 args=($@)
@@ -218,6 +223,7 @@ cd \${BRANCH}
 # importantly, we do not clone from the lcoation that we want to push the
 # results to, in order to avoid too many jobs blocking access to
 # the same location and creating a throughput bottleneck
+echo inside particpant_job, before cloning "\${dssource}", PWD: "\${PWD}"
 datalad clone "\${dssource}" ds
 
 # all following actions are performed in the context of the superdataset
@@ -251,10 +257,11 @@ datalad get -n "inputs/data/\${subid}"
 # TODO: Be sure the actual path to the fmriprep container is correct
 # TODO FIX path!!
 echo Before running datalad run
+echo I am in \${PWD}
 datalad run \
     -i code/fmriprep_run.sh \
     -i inputs/data/\${subid} \
-    -i inputs/data/*json \
+    -i "inputs/data/*json" \
     -i containers/images/bids/bids-fmriprep--${VERSION}.sing \
     --explicit \
     -o \${subid}_fmriprep-${VERSION} \
@@ -284,6 +291,7 @@ chmod +x code/participant_job.sh
 
 cat > code/fmriprep_run.sh << "EOT"
 #!/bin/bash
+PS4=+
 set -e -u -x
 subid="$1"
 fmriprep_version="$2"
@@ -298,7 +306,7 @@ singularity run --cleanenv -B ${PWD} \
     inputs/data \
     prep \
     participant \
-    -w ${PWD}/.git/tmp/wkdir \
+    -w ${PWD}/.git/tmp/wkdir
 EOT
 
 cat ${FMRIPREP_OPT_FILE} >> code/fmriprep_run.sh
@@ -332,6 +340,7 @@ datalad save -m "Participant compute job implementation"
 MERGE_POSTSCRIPT=https://raw.githubusercontent.com/PennLINC/TheWay/main/scripts/cubic/merge_outputs_postscript.sh
 cat > code/merge_outputs.sh << "EOT"
 #!/bin/bash
+PS4=+
 set -e -u -x
 EOT
 echo "outputsource=${output_store}#$(datalad -f '{infos[dataset][id]}' wtf -S dataset)" \
