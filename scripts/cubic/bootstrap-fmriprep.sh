@@ -163,7 +163,12 @@ else
     datalad save -r -m "added input data"
 fi
 
-if [[ -z ${SUBJECTS_SUBSET} ]]
+
+if [[ -f ${SUBJECTS_SUBSET} ]]
+then
+    echo "subjects taken from a file: ${SUBJECTS_SUBSET}"
+    SUBJECTS=`cat ${SUBJECTS_SUBSET}`
+elif [[ -z ${SUBJECTS_SUBSET} ]]
 then
     SUBJECTS=$(find inputs/data -type d -name sub-* | cut -d '/' -f 3 )
 else
