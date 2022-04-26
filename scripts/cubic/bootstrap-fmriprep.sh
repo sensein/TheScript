@@ -311,7 +311,7 @@ singularity run --cleanenv -B ${PWD} \
     inputs/data \
     prep \
     participant \
-    -w ${PWD}/.git/tmp/wkdir
+    -w ${PWD}/.git/tmp/wkdir \
 EOT
 
 cat ${FMRIPREP_OPT_FILE} >> code/fmriprep_run.sh
