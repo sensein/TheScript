@@ -125,6 +125,8 @@ then
     [ "${BIDS_DATALAD_ID}" = 'N/A' ] && BIDS_INPUT_METHOD=copy
 fi
 
+echo "BIDS_DATALAD_ID:  $BIDS_DATALAD_ID"
+
 
 ## Start making things
 mkdir -p ${PROJECTROOT}
@@ -144,10 +146,10 @@ cd analysis
 
 # create dedicated input and output locations. Results will be pushed into the
 # output sibling and the analysis will start with a clone from the input sibling.
-datalad create-sibling-ria -s output "${output_store}"
+datalad create-sibling-ria -s output "${output_store}"  --new-store-ok
 # dj: not used
 pushremote=$(git remote get-url --push output)
-datalad create-sibling-ria -s input --storage-sibling off "${input_store}"
+datalad create-sibling-ria -s input --storage-sibling off "${input_store}" --new-store-ok
 
 # register the input dataset
 if [[ "${BIDS_INPUT_METHOD}" == "clone" ]]
@@ -176,7 +178,7 @@ else
 fi
 
 echo "!!!PWD" ${PWD}
-echo "subject" ${SUBJECTS_SUBSET}
+echo "subject subsets" ${SUBJECTS_SUBSET}
 
 
 if [ -z "${SUBJECTS}" ]
@@ -191,6 +193,7 @@ fi
 CONTAINERDS=///repronim/containers
 datalad install -d . --source ${CONTAINERDS}
 datalad get containers/images/bids/bids-fmriprep--${VERSION}.sing
+CONTAINERS_REPO=${PROJECTROOT}/analysis/containers
 
 cd ${PROJECTROOT}/analysis
 
@@ -211,10 +214,14 @@ dssource="\$1"
 pushgitremote="\$2"
 subid="\$3"
 job_id="\$4"
+CONTAINERS_REPO="\$5"
 echo SUBID: \${subid}
 echo TMPDIR: \${TMPDIR}
 echo JOB_TMPDIR: \${JOB_TMPDIR}
 echo fmriprep_version: ${VERSION}
+echo dssource: \${dssource}
+echo CONTAINERS_REPO: \${CONTAINERS_REPO}
+echo pushgitremote: \${pushgitremote}
 # change into the cluster-assigned temp directory. Not done by default in SGE
 cd \${JOB_TMPDIR}
 # OR Run it on a shared network drive
@@ -243,6 +250,13 @@ cd ds
 # and we want to avoid progressive slowdown. Instead we only ever push
 # a unique branch per each job (subject AND process specific name)
 git remote add outputstore "\$pushgitremote"
+
+# clonning local containers repo
+datalad clone --reckless ephemeral "\${CONTAINERS_REPO}" containers/
+# this probably can be skipped
+cd containers
+git remote remove datasets.datalad.org
+cd ..
 
 # all results of this job will be put into a dedicated branch
 git checkout -b "\${BRANCH}"
@@ -382,7 +396,7 @@ cat >> code/sbatch_array.sh <<EOF
 subjects=(${SUBJECTS})
 sub=\${subjects[\$SLURM_ARRAY_TASK_ID]}
 
-${PROJECTROOT}/analysis/code/participant_job.sh ${dssource} ${pushgitremote} \$sub \$SLURM_JOB_ID
+${PROJECTROOT}/analysis/code/participant_job.sh ${dssource} ${pushgitremote} \$sub \$SLURM_JOB_ID ${CONTAINERS_REPO}
 
 EOF
 
