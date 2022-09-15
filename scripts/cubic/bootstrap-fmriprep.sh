@@ -300,7 +300,9 @@ datalad uninstall -r --nocheck --if-dirty ignore inputs/data
 datalad drop -r . --nocheck
 git annex dead here
 cd ../..
-rm -rf \${BRANCH}
+#TODO: for now I will just move it instead of removing
+# rm -rf \${BRANCH}
+mv \${BRANCH} \${BRANCH}_torm
 
 echo SUCCESS
 # job handler should clean up workspace
@@ -332,8 +334,8 @@ cat ${FMRIPREP_OPT_FILE} >> code/fmriprep_run.sh
 
 cat >> code/fmriprep_run.sh << "EOT"
 cd prep
-mv fmriprep ../${subid}_fmriprep-${fmriprep_version}
-mv freesurfer  ../${subid}_freesurfer-${fmriprep_version}
+mv ${subid} ../${subid}_fmriprep-${fmriprep_version}
+mv sourcedata/freesurfer  ../${subid}_freesurfer-${fmriprep_version}
 rm -rf prep .git/tmp/wkdir
 EOT
 
