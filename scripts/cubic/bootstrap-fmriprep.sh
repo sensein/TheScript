@@ -189,10 +189,18 @@ else
     echo "LIST OF SUBJECTS": ${SUBJECTS}
 fi
 
-#dj: should we change this part?
 CONTAINERDS=///repronim/containers
 datalad install -d . --source ${CONTAINERDS}
-datalad get containers/images/bids/bids-fmriprep--${VERSION}.sing
+# amend the previous commit with a nicer commit message
+git commit --amend -m 'Register containers repo as a subdataset'
+if [[ "${VERSION}" == "fake" ]]
+then
+    cp /om2/user/djarecka/bootstrap/fake/fake_fmriprep_test_amd_latest.sif ${PROJECTROOT}/analysis/containers/images/bids/bids-fmriprep--${VERSION}.sing
+    datalad save -m "added a fake image" containers/images/bids/bids-fmriprep--${VERSION}.sing
+    echo "added a fake container"
+else
+    datalad get containers/images/bids/bids-fmriprep--${VERSION}.sing
+fi
 CONTAINERS_REPO=${PROJECTROOT}/analysis/containers
 
 cd ${PROJECTROOT}/analysis
