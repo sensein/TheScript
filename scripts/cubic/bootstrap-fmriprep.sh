@@ -236,7 +236,7 @@ cd \${JOB_TMPDIR}
 # cd /cbica/comp_space/$(basename $HOME)
 # Used for the branch names and the temp dir
 BRANCH="job-\${job_id}-\${subid}"
-mkdir \${BRANCH}
+mkdir -p \${BRANCH}
 cd \${BRANCH}
 
 # get the analysis dataset, which includes the inputs as well
