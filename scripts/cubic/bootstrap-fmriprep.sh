@@ -330,12 +330,12 @@ echo FMRIPREP_VER: ${fmriprep_version}
 echo SUBID: ${subid}
 echo PWD: ${PWD}
 echo In fmriprep_run before singularity;
-singularity run --cleanenv -B ${PWD} \
+singularity run --cleanenv -B ${PWD}:/pwd \
     containers/images/bids/bids-fmriprep--${fmriprep_version}.sing \
-    inputs/data \
-    prep \
+    /pwd/inputs/data \
+    /pwd/prep \
     participant \
-    -w ${PWD}/.git/tmp/wkdir \
+    -w /pwd/.git/tmp/wkdir \
 EOT
 
 cat ${FMRIPREP_OPT_FILE} >> code/fmriprep_run.sh
