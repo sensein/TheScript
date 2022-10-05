@@ -304,8 +304,8 @@ flock \${DSLOCKFILE} git push outputstore
 echo TMPDIR TO DELETE
 echo \${BRANCH}
 
-datalad uninstall -r --nocheck --if-dirty ignore inputs/data
-datalad drop -r . --nocheck
+#datalad uninstall -r --nocheck --if-dirty ignore inputs/data
+datalad drop -r . --reckless kill
 git annex dead here
 cd ../..
 #TODO: for now I will just move it instead of removing
@@ -429,7 +429,7 @@ datalad save -m "SLURM submission setup" code/ .gitignore
 # git operations needlessly slow
 if [ "${BIDS_INPUT_METHOD}" = "clone" ]
 then
-    datalad uninstall -r --nocheck inputs/data
+    datalad drop -r --reckless availability inputs/data
 fi
 
 # make sure the fully configured output dataset is available from the designated
