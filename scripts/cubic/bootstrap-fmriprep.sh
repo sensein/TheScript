@@ -291,8 +291,8 @@ datalad run \
     -i "inputs/data/*json" \
     -i containers/images/bids/bids-fmriprep--${VERSION}.sing \
     --explicit \
-    -o \${subid}_fmriprep-${VERSION} \
-    -o \${subid}_freesurfer-${VERSION} \
+    -o \fmriprep-${VERSION} \
+    -o \freesurfer-${VERSION} \
     -m "fmriprep:${VERSION} \${subid}" \
     "bash code/fmriprep_run.sh \${subid} ${VERSION}"
 
@@ -347,7 +347,8 @@ mv ${subid} ../fmriprep-${fmriprep_version}/
 mkdir -p ../freesurfer-${fmriprep_version}
 mv sourcedata/freesurfer  ../freesurfer-${fmriprep_version}/
 cd ..
-rm -rf prep .git/tmp/wkdir
+#rm -rf prep .git/tmp/wkdir
+mv prep prep_torm
 EOT
 
 chmod +x code/fmriprep_run.sh
