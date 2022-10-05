@@ -344,6 +344,7 @@ cat >> code/fmriprep_run.sh << "EOT"
 cd prep
 mv ${subid} ../${subid}_fmriprep-${fmriprep_version}
 mv sourcedata/freesurfer  ../${subid}_freesurfer-${fmriprep_version}
+cd ..
 rm -rf prep .git/tmp/wkdir
 EOT
 
