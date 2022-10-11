@@ -236,8 +236,11 @@ cd \${JOB_TMPDIR}
 # cd /cbica/comp_space/$(basename $HOME)
 # Used for the branch names and the temp dir
 BRANCH="job-\${job_id}-\${subid}"
-mkdir -p \${BRANCH}
-cd \${BRANCH}
+if [ ! -f \${BRANCH}.exists ]; then
+    rm -rf \${BRANCH}
+
+    mkdir -p \${BRANCH}
+    cd \${BRANCH}
 
 # get the analysis dataset, which includes the inputs as well
 # importantly, we do not clone from the lcoation that we want to push the
@@ -247,7 +250,7 @@ echo inside particpant_job, before cloning "\${dssource}", PWD: "\${PWD}"
 datalad clone "\${dssource}" ds
 
 # all following actions are performed in the context of the superdataset
-cd ds
+    cd ds
 
 # in order to avoid accumulation temporary git-annex availability information
 # and to avoid a syncronization bottleneck by having to consolidate the
@@ -257,27 +260,33 @@ cd ds
 # this remote is never fetched, it accumulates a larger number of branches
 # and we want to avoid progressive slowdown. Instead we only ever push
 # a unique branch per each job (subject AND process specific name)
-git remote add outputstore "\$pushgitremote"
+    git remote add outputstore "\$pushgitremote"
 
 # clonning local containers repo
-datalad clone --reckless ephemeral "\${CONTAINERS_REPO}" containers/
+    datalad clone --reckless ephemeral "\${CONTAINERS_REPO}" containers/
 # this probably can be skipped
-cd containers
-git remote remove datasets.datalad.org
-cd ..
+    cd containers
+    git remote remove datasets.datalad.org
+    cd ..
 
 # all results of this job will be put into a dedicated branch
-git checkout -b "\${BRANCH}"
+    git checkout -b "\${BRANCH}"
 
 # we pull down the input subject manually in order to discover relevant
 # files. We do this outside the recorded call, because on a potential
 # re-run we want to be able to do fine-grained recomputing of individual
 # outputs. The recorded calls will have specific paths that will enable
 # recomputation outside the scope of the original setup
-datalad get -n "inputs/data/\${subid}"
+    datalad get -n "inputs/data/\${subid}"
 
 # Reomve all subjects we're not working on
-(cd inputs/data && rm -rf `find . -type d -name 'sub*' | grep -v \$subid`)
+    (cd inputs/data && rm -rf `find . -type d -name 'sub*' | grep -v \$subid`)
+
+#setup before fmriprep run complete, make a file for requeuing
+    touch ../../\${BRANCH}.exists
+else
+    cd cd \${BRANCH}/ds
+fi
 
 # ------------------------------------------------------------------------------
 # Do the run!
