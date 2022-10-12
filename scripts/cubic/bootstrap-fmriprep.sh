@@ -285,7 +285,7 @@ datalad clone "\${dssource}" ds
 #setup before fmriprep run complete, make a file for requeuing
     touch ../../\${BRANCH}.exists
 else
-    cd cd \${BRANCH}/ds
+    cd \${BRANCH}/ds
 fi
 
 # ------------------------------------------------------------------------------
@@ -353,7 +353,10 @@ cat >> code/fmriprep_run.sh << "EOT"
 cd prep
 mkdir -p ../fmriprep-${fmriprep_version}
 mv ${subid} ../fmriprep-${fmriprep_version}/
-mv ${subid}.html ../fmriprep-${fmriprep_version}/
+
+if [ -f ${subid}.html ]; then
+    mv ${subid}.html ../fmriprep-${fmriprep_version}/
+fi
 mkdir -p ../freesurfer-${fmriprep_version}
 mv sourcedata/freesurfer  ../freesurfer-${fmriprep_version}/
 cd ..
