@@ -221,8 +221,7 @@ args=($@)
 dssource="\$1"
 pushgitremote="\$2"
 subid="\$3"
-job_id="\$4"
-CONTAINERS_REPO="\$5"
+CONTAINERS_REPO="\$4"
 echo SUBID: \${subid}
 echo TMPDIR: \${TMPDIR}
 echo JOB_TMPDIR: \${JOB_TMPDIR}
@@ -235,7 +234,7 @@ cd \${JOB_TMPDIR}
 # OR Run it on a shared network drive
 # cd /cbica/comp_space/$(basename $HOME)
 # Used for the branch names and the temp dir
-BRANCH="job-\${job_id}-\${subid}"
+BRANCH="\${subid}"
 if [ ! -f \${BRANCH}.exists ]; then
     rm -rf \${BRANCH}
 
@@ -319,7 +318,6 @@ git annex dead here
 cd ../..
 #TODO: for now I will just move it instead of removing
 # rm -rf \${BRANCH}
-mv \${BRANCH} \${BRANCH}_torm
 
 echo SUCCESS
 # job handler should clean up workspace
@@ -333,7 +331,7 @@ PS4=+
 set -e -u -x
 subid="$1"
 fmriprep_version="$2"
-mkdir -p ${PWD}/.git/tmp/wdir
+mkdir -p ${PWD}/.git/tmp/wkdir
 # TODO: fix path to singularity image
 echo FMRIPREP_VER: ${fmriprep_version}
 echo SUBID: ${subid}
@@ -351,17 +349,21 @@ cat ${FMRIPREP_OPT_FILE} >> code/fmriprep_run.sh
 
 cat >> code/fmriprep_run.sh << "EOT"
 cd prep
-mkdir -p ../fmriprep-${fmriprep_version}
+if [ -d ../fmriprep-${fmriprep_version} ]; then
+    rm -rf ../fmriprep-${fmriprep_version}
+fi
+mkdir ../fmriprep-${fmriprep_version}
 mv ${subid} ../fmriprep-${fmriprep_version}/
-
 if [ -f ${subid}.html ]; then
     mv ${subid}.html ../fmriprep-${fmriprep_version}/
 fi
-mkdir -p ../freesurfer-${fmriprep_version}
+if [ -d ../freesurfer-${fmriprep_version}  ]; then
+    rm -rf ../freesurfer-${fmriprep_version}
+fi
+mkdir ../freesurfer-${fmriprep_version}
 mv sourcedata/freesurfer  ../freesurfer-${fmriprep_version}/
 cd ..
-#rm -rf prep .git/tmp/wkdir
-mv prep prep_torm
+rm -rf prep #.git/tmp/wkdir
 EOT
 
 chmod +x code/fmriprep_run.sh
@@ -425,7 +427,7 @@ cat >> code/sbatch_array.sh <<EOF
 subjects=(${SUBJECTS})
 sub=\${subjects[\$SLURM_ARRAY_TASK_ID]}
 
-${PROJECTROOT}/analysis/code/participant_job.sh ${dssource} ${pushgitremote} \$sub \$SLURM_JOB_ID ${CONTAINERS_REPO}
+${PROJECTROOT}/analysis/code/participant_job.sh ${dssource} ${pushgitremote} \$sub ${CONTAINERS_REPO}
 
 EOF
 
