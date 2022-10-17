@@ -292,6 +292,9 @@ fi
 # TODO: Be sure the actual path to the fmriprep container is correct
 # TODO FIX path!!
 echo Before running datalad run
+if [[ -d prep/sourcedata/freesurfer ]]; then
+    find prep/sourcedata/freesurfer -name "*IsRunning*" -delete
+fi
 echo I am in \${PWD}
 datalad run \
     -i code/fmriprep_run.sh \
