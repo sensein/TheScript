@@ -1,6 +1,9 @@
 ## How to use bootstrap-fmriprep on slurm
 
 #### 1) Clone the repo
+
+- naviagte to openmind_slurm branch to use bootstrap-fmriprep on slurm as described below
+
 #### 2) navigate to TheWay/scripts/cubic/config_examples/bootstrap-fmriprep and 
 
 - edit env_setup.sh so that it will activated an environment with datalad installed
