@@ -2,19 +2,19 @@
 # The following should be pasted into the merge_outputs.sh script
 datalad clone ${outputsource} merge_ds
 cd merge_ds
-NBRANCHES=$(git branch -a | grep job- | sort | wc -l)
+NBRANCHES=$(git branch -a | grep sub- | sort | wc -l)
 echo "Found $NBRANCHES branches to merge"
 
 gitref=$(git show-ref master | cut -d ' ' -f1 | head -n 1)
 
 # query all branches for the most recent commit and check if it is identical.
 # Write all branch identifiers for jobs without outputs into a file.
-for i in $(git branch -a | grep job- | sort); do [ x"$(git show-ref $i \
+for i in $(git branch -a | grep sub- | sort); do [ x"$(git show-ref $i \
   | cut -d ' ' -f1)" = x"${gitref}" ] && \
   echo $i; done | tee code/noresults.txt | wc -l
 
 
-for i in $(git branch -a | grep job- | sort); \
+for i in $(git branch -a | grep sub- | sort); \
   do [ x"$(git show-ref $i  \
      | cut -d ' ' -f1)" != x"${gitref}" ] && \
      echo $i; \
