@@ -210,6 +210,21 @@ echo '#!/bin/bash' > code/participant_job.sh
 
 cat $PRESCRIPT >> code/participant_job.sh
 
+# scripts that removes all subjects that are not needed
+cat >> code/remove-all-other-subjects-first.sh <<EOF
+#!/bin/bash
+
+set -eu
+data="\${1:?Usage FOLDER SUBJ}"; shift
+subid="\${1:?Usage FOLDER SUBJ}"; shift
+
+(cd "\$data" && /bin/ls -1d sub-* | grep -v "\${subid}\\$" | xargs rm -rf .heudiconv sourcedata rawdata derivatives)
+
+"\$@"
+
+EOF
+chmod a+x code/remove-all-other-subjects-first.sh
+
 cat >> code/participant_job.sh << EOT
 
 echo I\'m in \$PWD using `which python`
@@ -278,9 +293,6 @@ datalad clone "\${dssource}" ds
 # recomputation outside the scope of the original setup
     datalad get -n "inputs/data/\${subid}"
 
-# Reomve all subjects we're not working on
-    (cd inputs/data && rm -rf `find . -type d -name 'sub*' | grep -v \$subid`)
-
 #setup before fmriprep run complete, make a file for requeuing
     touch ../../\${BRANCH}.exists
 else
@@ -305,7 +317,7 @@ datalad run \
     -o \fmriprep-${VERSION} \
     -o \freesurfer-${VERSION} \
     -m "fmriprep:${VERSION} \${subid}" \
-    "bash code/fmriprep_run.sh \${subid} ${VERSION}"
+    "code/remove-all-other-subjects-first.sh inputs/data "\${subid}" code/fmriprep_run.sh \${subid} ${VERSION}"
 
 # file content first -- does not need a lock, no interaction with Git
 datalad push --to output-storage
