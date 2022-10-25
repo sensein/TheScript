@@ -399,7 +399,7 @@ echo logs >> .gitignore
 datalad save -m "Participant compute job implementation"
 
 # Add a script for merging outputs
-MERGE_POSTSCRIPT=https://raw.githubusercontent.com/djarecka/TheWay/openmind_slurm/scripts/cubic/merge_outputs_postscript.sh
+MERGE_POSTSCRIPT=https://raw.githubusercontent.com/sensein/TheWay/main/scripts/fmriprep/merge_outputs_postscript.sh
 
 cat > code/merge_outputs.sh << "EOT"
 #!/bin/bash
