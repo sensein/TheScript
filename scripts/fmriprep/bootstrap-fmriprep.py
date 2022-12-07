@@ -12,7 +12,7 @@ from urllib.request import urlopen
 MERGE_POSTSCRIPT = "https://raw.githubusercontent.com/sensein/TheWay/main/scripts/fmriprep/merge_outputs_postscript.sh"
 # location of the fake container TODO
 FAKE_CONTAINER_PATH = "/om2/user/djarecka/bootstrap/fake/fake_fmriprep_test_amd_latest.sif"
-
+#FAKE_CONTAINER_PATH = "/Users/dorota/tmp/fake_fmriprep_test_amd_latest.test"
 
 @click.command(help="Search TODO")
 @click.option(
@@ -350,11 +350,6 @@ cd {projectroot}
     dssource = f"{input_store}#{dataset_id}"
     pushgitremote = sb.check_output(["git", "remote", "get-url", "--push", "output"]).decode('utf-8').strip()
 
-    ################################################################################
-    # SLURM SETUP START - remove or adjust to your needs
-    ################################################################################
-    # todo: is it needed?
-    #env_flags = "--export=DSLOCKFILE=${PWD}/.SLURM_datalad_lock"
 
     # checking the length of the subjects list
     subjects_list = subjects
@@ -403,6 +398,7 @@ sub=${{subjects[$SLURM_ARRAY_TASK_ID]}}
     (projectroot / "output_ria/alias/data").symlink_to(ria_dir)
 
     print("Success")
+
 
 
 if __name__ == '__main__':
