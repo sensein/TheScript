@@ -17,7 +17,8 @@ FAKE_CONTAINER_PATH = "/om2/user/djarecka/bootstrap/fake/fake_fmriprep_test_amd_
 class BootstrapScript:
 
     def __init__(self, bidsinput, projectroot, job_tmpdir, version, subjects_subset,
-                 fmriprep_opt_file, env_script, slurm_opt_file, freesurfer_license, copy_dir):
+                 fmriprep_opt_file, env_script, slurm_opt_file, freesurfer_license,
+                 copy_dir, max_job):
         self.bidsinput = bidsinput
         self.projectroot = Path(projectroot)
         self.analysis_dir = self.projectroot / "analysis"
@@ -29,7 +30,10 @@ class BootstrapScript:
         self.slurm_opt_file = slurm_opt_file
         self.freesurfer_license = freesurfer_license
         self.copy_dir = copy_dir
-
+        if max_job is None:
+            self.max_job = max_job
+        else:
+            self.max_job = int(max_job)
 
     def settup_and_script(self):
         # assuming bids_input_method = "clone"
@@ -108,7 +112,16 @@ class BootstrapScript:
 
         self.dssource = f"{self.input_store}#{self.dataset_id}"
         self.pushgitremote = sb.check_output(["git", "remote", "get-url", "--push", "output"]).decode('utf-8').strip()
-        self._write_slurm_script()
+
+        if self.max_job and len(self.subjects) > self.max_job:
+            nn = len(self.subjects) // self.max_job
+            if len(self.subjects) % self.max_job:
+                nn += 1
+            for ii in range(nn):
+                subjects_part = self.subjects[ii*self.max_job:(ii+1)*self.max_job]
+                self._write_slurm_script(subjects=subjects_part, slurm_filename=f"sbatch_array_{ii}.sh")
+        else:
+            self._write_slurm_script(subjects=self.subjects)
 
         # I believe this is not needed: path=["code/", ".gitignore"],
         dl.save(message="SLURM submission setup")
@@ -323,7 +336,7 @@ cd {self.projectroot}
         (self.analysis_dir / "code/merge_outputs.sh").chmod(0o775)
 
 
-    def _write_slurm_script(self):
+    def _write_slurm_script(self, subjects, slurm_filename="sbatch_array.sh"):
         with Path(self.slurm_opt_file).open() as f:
             slurm_opt_text = f.read()
 
@@ -332,15 +345,15 @@ cd {self.projectroot}
 
 #SBATCH --export=DSLOCKFILE={self.projectroot}/analysis/.SLURM_datalad_lock,JOB_TMPDIR={self.job_tmpdir}
 
-#SBATCH --array=0-{len(self.subjects) - 1}
+#SBATCH --array=0-{len(subjects) - 1}
 
-subjects=({' '.join(self.subjects)})
+subjects=({' '.join(subjects)})
 sub=${{subjects[$SLURM_ARRAY_TASK_ID]}}
 
 {self.projectroot}/analysis/code/participant_job.sh {self.dssource} {self.pushgitremote} $sub {self.containers_repo}
 """
 
-        with (self.analysis_dir / "code/sbatch_array.sh").open("w") as f:
+        with (self.analysis_dir / f"code/{slurm_filename}").open("w") as f:
             f.write("#!/bin/bash\n")
             f.write(slurm_opt_text)
             f.write(slurm_main_text)
@@ -407,8 +420,12 @@ sub=${{subjects[$SLURM_ARRAY_TASK_ID]}}
     "--copy_dir",
     help="optional, path to the directory that will be copied to the code directory"
 )
+@click.option(
+    "--max_job",
+    help="optional, maximal number of jobs run on slurm"
+)
 def main(bidsinput, projectroot, job_tmpdir, version, subjects_subset, fmriprep_opt_file,
-              env_script, slurm_opt_file, freesurfer_license, copy_dir):
+              env_script, slurm_opt_file, freesurfer_license, copy_dir, max_job):
     print("bidsinput", bidsinput)
     print("job_tmpdir", job_tmpdir)
     print(f"copy_dir", copy_dir)
@@ -421,7 +438,8 @@ def main(bidsinput, projectroot, job_tmpdir, version, subjects_subset, fmriprep_
     bs = BootstrapScript(bidsinput=bidsinput, projectroot=projectroot, job_tmpdir=job_tmpdir,
                          version=version, subjects_subset=subjects_subset,
                          fmriprep_opt_file=fmriprep_opt_file, env_script=env_script,
-                         slurm_opt_file=slurm_opt_file, freesurfer_license=freesurfer_license, copy_dir=copy_dir)
+                         slurm_opt_file=slurm_opt_file, freesurfer_license=freesurfer_license,
+                         copy_dir=copy_dir, max_job=max_job)
     bs.settup_and_script()
 
 
