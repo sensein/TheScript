@@ -11,8 +11,8 @@ from urllib.request import urlopen
 # Add a script for merging outputs
 MERGE_POSTSCRIPT = "https://raw.githubusercontent.com/sensein/TheWay/main/scripts/fmriprep/merge_outputs_postscript.sh"
 # location of the fake container TODO
-#FAKE_CONTAINER_PATH = "/om2/user/djarecka/bootstrap/fake/fake_fmriprep_test_amd_latest.sif"
-FAKE_CONTAINER_PATH = "/Users/dorota/tmp/fake_fmriprep_test_amd_latest.test"
+FAKE_CONTAINER_PATH = "/om2/user/djarecka/bootstrap/fake/fake_fmriprep_test_amd_latest.sif"
+#FAKE_CONTAINER_PATH = "/Users/dorota/tmp/fake_fmriprep_test_amd_latest.test"
 
 class BootstrapScript:
 
@@ -129,13 +129,13 @@ class BootstrapScript:
     def _write_participant_scripts(self):
         remove_all_text = """#!/bin/bash
 
-        set -eu
-        data="${1:?Usage FOLDER SUBJ}"; shift
-        subid="${1:?Usage FOLDER SUBJ}"; shift
+set -eu
+data="${1:?Usage FOLDER SUBJ}"; shift
+subid="${1:?Usage FOLDER SUBJ}"; shift
 
-        (cd "$data" && /bin/ls -1d sub-* | grep -v "${subid}\$" | xargs rm -rf .heudiconv sourcedata rawdata derivatives)
-        "$@"
-        """
+(cd "$data" && /bin/ls -1d sub-* | grep -v "${subid}\$" | xargs rm -rf .heudiconv sourcedata rawdata derivatives)
+"$@"
+"""
 
         with (self.analysis_dir / "code/remove-all-other-subjects-first.sh").open("w") as f:
             f.write(remove_all_text)
@@ -308,11 +308,11 @@ rm -rf prep #.git/tmp/wkdir
 
     def _write_merge_script(self):
         merge_text_start = f"""#!/bin/bash
-        PS4=+
-        set -e -u -x
-        outputsource={self.output_store}#{self.dataset_id}
-        cd {self.projectroot}
-        """
+PS4=+
+set -e -u -x
+outputsource={self.output_store}#{self.dataset_id}
+cd {self.projectroot}
+"""
         with urlopen(MERGE_POSTSCRIPT) as f:
             merge_text_file = f.read().decode('utf-8')
 
@@ -328,17 +328,17 @@ rm -rf prep #.git/tmp/wkdir
             slurm_opt_text = f.read()
 
         slurm_main_text = f"""#SBATCH --output=logs/array_%A_%a.out
-        #SBATCH --error=logs/array_%A_%a.err
+#SBATCH --error=logs/array_%A_%a.err
 
-        #SBATCH --export=DSLOCKFILE={self.projectroot}/analysis/.SLURM_datalad_lock,JOB_TMPDIR={self.job_tmpdir}
+#SBATCH --export=DSLOCKFILE={self.projectroot}/analysis/.SLURM_datalad_lock,JOB_TMPDIR={self.job_tmpdir}
 
-        #SBATCH --array=0-{len(self.subjects) - 1}
+#SBATCH --array=0-{len(self.subjects) - 1}
 
-        subjects=({' '.join(self.subjects)})
-        sub=${{subjects[$SLURM_ARRAY_TASK_ID]}}
+subjects=({' '.join(self.subjects)})
+sub=${{subjects[$SLURM_ARRAY_TASK_ID]}}
 
-        {self.projectroot}/analysis/code/participant_job.sh {self.dssource} {self.pushgitremote} $sub {self.containers_repo}
-            """
+{self.projectroot}/analysis/code/participant_job.sh {self.dssource} {self.pushgitremote} $sub {self.containers_repo}
+"""
 
         with (self.analysis_dir / "code/sbatch_array.sh").open("w") as f:
             f.write("#!/bin/bash\n")
