@@ -22,7 +22,7 @@ class BootstrapScript:
         self.bidsinput = bidsinput
         self.projectroot = Path(projectroot)
         self.analysis_dir = self.projectroot / "analysis"
-        self.job_tmpdir = job_tmpdir
+        self.job_tmpdir = Path(job_tmpdir)
         self.version = version
         self.subjects_subset = subjects_subset
         self.fmriprep_opt_file = fmriprep_opt_file
@@ -41,7 +41,7 @@ class BootstrapScript:
             ["datalad", "-f", '{infos[dataset][id]}', "wtf", "-S", "dataset", "-d", f"{self.bidsinput}"]
         ).decode('utf-8').strip()
         print("BIDS_DATALAD_ID: ", bids_dataset_id)
-        # projectroot = Path(projectroot)
+        self.job_tmpdir.mkdir(parents=True, exist_ok=True)
         self.projectroot.mkdir(parents=True)
         os.chdir(self.projectroot)
         # analysis_dir = projectroot / "analysis"
