@@ -1,3 +1,5 @@
+import json
+
 import click
 import datalad
 import datalad.api as dl
@@ -18,7 +20,7 @@ class BootstrapScript:
 
     def __init__(self, bidsinput, projectroot, job_tmpdir, version, subjects_subset,
                  fmriprep_opt_file, env_script, slurm_opt_file, freesurfer_license,
-                 copy_dir, max_job):
+                 copy_dir, max_job, sessions):
         self.bidsinput = bidsinput
         self.projectroot = Path(projectroot)
         self.analysis_dir = self.projectroot / "analysis"
@@ -34,6 +36,7 @@ class BootstrapScript:
             self.max_job = max_job
         else:
             self.max_job = int(max_job)
+        self.sessions = sessions
 
     def settup_and_script(self):
         # assuming bids_input_method = "clone"
@@ -120,8 +123,12 @@ class BootstrapScript:
             for ii in range(nn):
                 subjects_part = self.subjects[ii*self.max_job:(ii+1)*self.max_job]
                 self._write_slurm_script(subjects=subjects_part, slurm_filename=f"sbatch_array_{ii}.sh")
-        else:
-            self._write_slurm_script(subjects=self.subjects)
+        else: #TODO: polaczyc dwa ify
+            if self.sessions:
+                for ses in self.sessions:
+                    self._write_slurm_script(subjects=self.subjects, session=ses, slurm_filename=f"sbatch_array_ses-{ses}.sh")
+            else:
+                self._write_slurm_script(subjects=self.subjects)
 
         # I believe this is not needed: path=["code/", ".gitignore"],
         dl.save(message="SLURM submission setup")
@@ -155,6 +162,13 @@ subid="${1:?Usage FOLDER SUBJ}"; shift
 
         (self.analysis_dir / "code/remove-all-other-subjects-first.sh").chmod(0o775)
 
+        for ses in self.sessions:
+            self._create_session_filter(ses)
+
+        part_session_text = "$5" if self.sessions else ""
+        fmri_session_text = "$3" if self.sessions else "none"
+
+
         main_participant_text \
             = f"""echo I\\'m in $PWD using {sb.check_output(["which", "python"]).decode('utf-8').strip()}
 # fail whenever something is fishy, use -x to get verbose logfiles
@@ -165,6 +179,7 @@ args=($@)
 dssource="$1"
 pushgitremote="$2"
 subid="$3"
+session={part_session_text}
 CONTAINERS_REPO="$4"
 echo SUBID: ${{subid}}
 echo TMPDIR: ${{TMPDIR}}
@@ -178,7 +193,7 @@ cd ${{JOB_TMPDIR}}
 # OR Run it on a shared network drive
 # cd /cbica/comp_space/{Path(os.environ['HOME']).name}
 # Used for the branch names and the temp dir
-BRANCH="${{subid}}"
+BRANCH="${{subid}}${{session}}"
 if [ ! -f ${{BRANCH}}.exists ]; then
     rm -rf ${{BRANCH}}
 
@@ -244,7 +259,7 @@ datalad run \
     -o \\fmriprep-{self.version} \
     -o \\freesurfer-{self.version} \
     -m "fmriprep:{self.version} ${{subid}}" \
-    "code/remove-all-other-subjects-first.sh inputs/data "${{subid}}" code/fmriprep_run.sh ${{subid}} {self.version}"
+    code/remove-all-other-subjects-first.sh inputs/data "${{subid}}" code/fmriprep_run.sh ${{subid}} {self.version} "${{session}}"
 
 # file content first -- does not need a lock, no interaction with Git
 datalad push --to output-storage
@@ -277,9 +292,11 @@ PS4=+
 set -e -u -x
 subid="$1"
 fmriprep_version="$2"
+session={fmri_session_text}
 mkdir -p ${{PWD}}/.git/tmp/wkdir
 echo FMRIPREP_VER: {self.version}
 echo SUBID: ${{subid}}
+echo SESSION: ${{session}}
 echo PWD: ${{PWD}}
 echo In fmriprep_run before singularity;
 singularity run --cleanenv -B ${{PWD}}:/pwd \
@@ -289,6 +306,9 @@ singularity run --cleanenv -B ${{PWD}}:/pwd \
     participant \
     -w /pwd/.git/tmp/wkdir \
 """
+        if self.sessions: #TODO
+            fmripreprun_beg_text += "--bids-filter-file code/filter_${session}.json"
+
 
         fmripreprun_end_text = f"""cd prep
 if [ -d ../fmriprep-{self.version} ]; then
@@ -336,9 +356,18 @@ cd {self.projectroot}
         (self.analysis_dir / "code/merge_outputs.sh").chmod(0o775)
 
 
-    def _write_slurm_script(self, subjects, slurm_filename="sbatch_array.sh"):
+    def _create_session_filter(self, session):
+        filter_dict = {}
+        for (suf, tp) in [("bold", "func"), ("t1w", "anat"), ("t2w", "anat")]:
+            filter_dict[suf] = {"datatype": tp, "suffix": suf, "session": session}
+            with (self.analysis_dir / f"code/filter_{session}.json").open("w") as f:
+                f.write(json.dumps(filter_dict))
+
+    def _write_slurm_script(self, subjects, session=None, slurm_filename="sbatch_array.sh"):
         with Path(self.slurm_opt_file).open() as f:
             slurm_opt_text = f.read()
+
+        slurm_session_text = session if session else ""
 
         slurm_main_text = f"""#SBATCH --output=logs/array_%A_%a.out
 #SBATCH --error=logs/array_%A_%a.err
@@ -350,7 +379,7 @@ cd {self.projectroot}
 subjects=({' '.join(subjects)})
 sub=${{subjects[$SLURM_ARRAY_TASK_ID]}}
 
-{self.projectroot}/analysis/code/participant_job.sh {self.dssource} {self.pushgitremote} $sub {self.containers_repo}
+{self.projectroot}/analysis/code/participant_job.sh {self.dssource} {self.pushgitremote} $sub {self.containers_repo} {slurm_session_text}
 """
 
         with (self.analysis_dir / f"code/{slurm_filename}").open("w") as f:
@@ -424,8 +453,13 @@ sub=${{subjects[$SLURM_ARRAY_TASK_ID]}}
     "--max_job",
     help="optional, maximal number of jobs run on slurm"
 )
+@click.option(
+    "--sessions",
+    multiple=True,
+    help="optional, name of sessions if fmriprep is run per session"
+)
 def main(bidsinput, projectroot, job_tmpdir, version, subjects_subset, fmriprep_opt_file,
-              env_script, slurm_opt_file, freesurfer_license, copy_dir, max_job):
+              env_script, slurm_opt_file, freesurfer_license, copy_dir, max_job, sessions):
     print("bidsinput", bidsinput)
     print("job_tmpdir", job_tmpdir)
     print(f"copy_dir", copy_dir)
@@ -434,12 +468,13 @@ def main(bidsinput, projectroot, job_tmpdir, version, subjects_subset, fmriprep_
     print(f"file with fmriprep options: {fmriprep_opt_file}")
     print(f"file with SLURM options: {slurm_opt_file}")
     print(f"freesurfer license file: {freesurfer_license}")
+    print(f"sessions = {sessions}")
 
     bs = BootstrapScript(bidsinput=bidsinput, projectroot=projectroot, job_tmpdir=job_tmpdir,
                          version=version, subjects_subset=subjects_subset,
                          fmriprep_opt_file=fmriprep_opt_file, env_script=env_script,
                          slurm_opt_file=slurm_opt_file, freesurfer_license=freesurfer_license,
-                         copy_dir=copy_dir, max_job=max_job)
+                         copy_dir=copy_dir, max_job=max_job, sessions=sessions)
     bs.settup_and_script()
 
 
