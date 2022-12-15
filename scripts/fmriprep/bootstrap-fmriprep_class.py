@@ -241,8 +241,7 @@ datalad run \
     -i "inputs/data/*json" \
     -i containers/images/bids/bids-fmriprep--{self.version}.sing \
     --explicit \
-    -o \\fmriprep-{self.version} \
-    -o \\freesurfer-{self.version} \
+    -o \\derivatives \
     -m "fmriprep:{self.version} ${{subid}}" \
     "code/remove-all-other-subjects-first.sh inputs/data "${{subid}}" code/fmriprep_run.sh ${{subid}} {self.version}"
 
@@ -294,16 +293,17 @@ singularity run --cleanenv -B ${{PWD}}:/pwd \
 if [ -d ../fmriprep-{self.version} ]; then
     rm -rf ../fmriprep-{self.version}
 fi
-mkdir ../fmriprep-{self.version}
-mv ${{subid}} ../fmriprep-{self.version}/
+mkdir ../derivatives
+
+mv ${{subid}} ../derivatives/
 if [ -f ${{subid}}.html ]; then
-    mv ${{subid}}.html ../fmriprep-{self.version}/
+    mv ${{subid}}.html ../derivatives/
 fi
 if [ -d ../freesurfer-{self.version}  ]; then
     rm -rf ../freesurfer-{self.version}
 fi
-mkdir ../freesurfer-{self.version}
-mv sourcedata/freesurfer  ../freesurfer-{self.version}/
+
+mv sourcedata  ../derivatives/
 cd ..
 rm -rf prep #.git/tmp/wkdir
 """
