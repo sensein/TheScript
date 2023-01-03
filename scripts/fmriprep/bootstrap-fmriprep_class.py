@@ -20,7 +20,7 @@ class BootstrapScript:
 
     def __init__(self, bidsinput, projectroot, job_tmpdir, version, subjects_subset,
                  fmriprep_opt_file, env_script, slurm_opt_file, freesurfer_license,
-                 copy_dir, max_job, sessions):
+                 copy_dir, max_job, sessions, reconstruction):
         self.bidsinput = bidsinput
         self.projectroot = Path(projectroot)
         self.analysis_dir = self.projectroot / "analysis"
@@ -37,6 +37,7 @@ class BootstrapScript:
         else:
             self.max_job = int(max_job)
         self.sessions = sessions
+        self.reconstruction = reconstruction
 
     def settup_and_script(self):
         # assuming bids_input_method = "clone"
@@ -116,19 +117,32 @@ class BootstrapScript:
         self.dssource = f"{self.input_store}#{self.dataset_id}"
         self.pushgitremote = sb.check_output(["git", "remote", "get-url", "--push", "output"]).decode('utf-8').strip()
 
-        if self.max_job and len(self.subjects) > self.max_job:
-            nn = len(self.subjects) // self.max_job
-            if len(self.subjects) % self.max_job:
-                nn += 1
-            for ii in range(nn):
-                subjects_part = self.subjects[ii*self.max_job:(ii+1)*self.max_job]
-                self._write_slurm_script(subjects=subjects_part, slurm_filename=f"sbatch_array_{ii}.sh")
-        else: #TODO: polaczyc dwa ify
-            if self.sessions:
-                for ses in self.sessions:
-                    self._write_slurm_script(subjects=self.subjects, session=ses, slurm_filename=f"sbatch_array_ses-{ses}.sh")
+        if not self.sessions:
+            if self.max_job and len(self.subjects) > self.max_job:
+                nn = len(self.subjects) // self.max_job
+                if len(self.subjects) % self.max_job:
+                    nn += 1
+                for ii in range(nn):
+                    subjects_part = self.subjects[ii*self.max_job:(ii+1)*self.max_job]
+                    self._write_slurm_script(subjects=subjects_part, slurm_filename=f"sbatch_array_{ii}.sh")
             else:
                 self._write_slurm_script(subjects=self.subjects)
+        else: # if self.sessions
+            for ses in self.sessions:
+                # checking which subjects have the specific session
+                selected_dirs_ses = (glob.glob(f'{self.analysis_dir}/inputs/data/{self.subjects_subset}/ses-{ses}'))
+                subjects_ses = [el.split("/")[-2] for el in selected_dirs_ses]
+                print("SES, SUB", ses, subjects_ses)
+                if self.max_job and len(self.subjects) > self.max_job:
+                    nn = len(subjects_ses) // self.max_job
+                    if len(subjects_ses) % self.max_job:
+                        nn += 1
+                    for ii in range(nn):
+                        subjects_part = subjects_ses[ii * self.max_job:(ii + 1) * self.max_job]
+                        self._write_slurm_script(subjects=subjects_part, session=ses, slurm_filename=f"sbatch_array_ses-{ses}_{ii}.sh")
+                else:
+                    self._write_slurm_script(subjects=subjects_ses, session=ses, slurm_filename=f"sbatch_array_ses-{ses}.sh")
+
 
         # I believe this is not needed: path=["code/", ".gitignore"],
         dl.save(message="SLURM submission setup")
@@ -310,22 +324,41 @@ singularity run --cleanenv -B ${{PWD}}:/pwd \
 
 
         fmripreprun_end_text = f"""cd prep
-if [ -d ../fmriprep-{self.version} ]; then
-    rm -rf ../fmriprep-{self.version}
-fi
+
 mkdir ../derivatives
+mkdir ../derivatives/fmriprep
 
-mv ${{subid}} ../derivatives/
-if [ -f ${{subid}}.html ]; then
-    mv ${{subid}}.html ../derivatives/
-fi
-if [ -d ../freesurfer-{self.version}  ]; then
-    rm -rf ../freesurfer-{self.version}
-fi
+mv * ../derivatives/fmriprep/
 
-mv sourcedata  ../derivatives/
 cd ..
-rm -rf prep #.git/tmp/wkdir
+#rm -rf prep #.git/tmp/wkdir
+
+"""
+        if self.sessions:
+            fmripreprun_end_text += """cd derivatives/fmriprep
+
+if [ -d sourcedata/freesurfer/${subid} ]; then
+    mkdir sourcedata/freesurfer/ses-${session}
+    mv sourcedata/freesurfer/${subid} sourcedata/freesurfer/ses-${session}/
+    mv sourcedata/freesurfer/fsaverage sourcedata/freesurfer/ses-${session}/
+fi
+
+if [ -f ${subid}.html ]; then
+    mv ${subid}.html ${subid}_ses-${session}.html
+fi
+
+if [ -f dataset_description.json ]; then
+    mv dataset_description.json dataset_description_ses-${session}.json
+fi
+
+if [ -d ${subid}/figures ]; then
+    mv ${subid}/figures ${subid}/figures_ses-${session}
+fi
+
+if [ -d ${subid}/log ]; then
+    mv ${subid}/log ${subid}/log_ses-${session}
+fi
+
 """
 
         with Path(self.fmriprep_opt_file).open() as f:
@@ -358,10 +391,15 @@ cd {self.projectroot}
 
     def _create_session_filter(self, session):
         filter_dict = {}
-        for (suf, tp) in [("bold", "func"), ("t1w", "anat"), ("t2w", "anat")]:
-            filter_dict[suf] = {"datatype": tp, "suffix": suf, "session": session}
-            with (self.analysis_dir / f"code/filter_{session}.json").open("w") as f:
-                f.write(json.dumps(filter_dict))
+        for (key, suf, tp) in [("bold", "bold", "func"), ("t1w", "T1w", "anat"), ("t2w", "T2w", "anat")]:
+            filter_dict[key] = {"datatype": tp, "suffix": suf, "session": session}
+        # TODO: check with Debbie
+        filter_dict["fmap"] = {"datatype": "fmap", "session": session}
+        if self.reconstruction:
+            filter_dict["bold"]["reconstruction"] = self.reconstruction
+
+        with (self.analysis_dir / f"code/filter_{session}.json").open("w") as f:
+            f.write(json.dumps(filter_dict))
 
     def _write_slurm_script(self, subjects, session=None, slurm_filename="sbatch_array.sh"):
         with Path(self.slurm_opt_file).open() as f:
@@ -412,7 +450,7 @@ sub=${{subjects[$SLURM_ARRAY_TASK_ID]}}
     "-v",
     "--version",
     required=True,
-    type=click.Choice(["fake", "21.0.2"]),
+    type=click.Choice(["fake", "21.0.2", "22.1.0"]),
     help="fmriprep_version"
 )
 @click.option(
@@ -458,8 +496,14 @@ sub=${{subjects[$SLURM_ARRAY_TASK_ID]}}
     multiple=True,
     help="optional, name of sessions if fmriprep is run per session"
 )
+@click.option(
+    "--reconstruction",
+    type=click.Choice(["unco"]),
+    help="optional, type of reconstructions"
+)
 def main(bidsinput, projectroot, job_tmpdir, version, subjects_subset, fmriprep_opt_file,
-              env_script, slurm_opt_file, freesurfer_license, copy_dir, max_job, sessions):
+              env_script, slurm_opt_file, freesurfer_license, copy_dir, max_job, sessions,
+              reconstruction):
     print("bidsinput", bidsinput)
     print("job_tmpdir", job_tmpdir)
     print(f"copy_dir", copy_dir)
@@ -474,7 +518,7 @@ def main(bidsinput, projectroot, job_tmpdir, version, subjects_subset, fmriprep_
                          version=version, subjects_subset=subjects_subset,
                          fmriprep_opt_file=fmriprep_opt_file, env_script=env_script,
                          slurm_opt_file=slurm_opt_file, freesurfer_license=freesurfer_license,
-                         copy_dir=copy_dir, max_job=max_job, sessions=sessions)
+                         copy_dir=copy_dir, max_job=max_job, sessions=sessions, reconstruction=reconstruction)
     bs.settup_and_script()
 
 
