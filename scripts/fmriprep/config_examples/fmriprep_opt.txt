@@ -1,10 +1,10 @@
-    --n_cpus 1 \
-    --stop-on-first-crash \
+    --mem_mb 40000 \
+    --nprocs 16 \
+    --omp-nthreads 8 \
     --fs-license-file code/license.txt \
     --skip-bids-validation \
     --use-aroma \
     --output-spaces MNI152NLin6Asym:res-2 anat \
     --participant-label "$subid" \
     --force-bbr \
-    --cifti-output 91k -v -v \
-    --bids-filter-file code/fmriprep_filter.json
+    --cifti-output 91k -v -v
