@@ -12,9 +12,8 @@ from urllib.request import urlopen
 
 # Add a script for merging outputs
 MERGE_POSTSCRIPT = "https://raw.githubusercontent.com/sensein/TheWay/main/scripts/fmriprep/merge_outputs_postscript.sh"
-# location of the fake container TODO
+# TODO: fake container should be adjusted to include sessions
 FAKE_CONTAINER_PATH = "/om2/user/djarecka/bootstrap/fake/fake_fmriprep_test_amd_latest.sif"
-#FAKE_CONTAINER_PATH = "/Users/dorota/tmp/fake_fmriprep_test_amd_latest.test"
 
 class BootstrapScript:
 
@@ -390,6 +389,7 @@ cd {self.projectroot}
 
 
     def _create_session_filter(self, session):
+        """ creating filter files for sessions, adding a reconstruction option if provided"""
         filter_dict = {}
         for (key, suf, tp) in [("bold", "bold", "func"), ("t1w", "T1w", "anat"), ("t2w", "T2w", "anat")]:
             filter_dict[key] = {"datatype": tp, "suffix": suf, "session": session}
@@ -450,7 +450,8 @@ sub=${{subjects[$SLURM_ARRAY_TASK_ID]}}
     "-v",
     "--version",
     required=True,
-    type=click.Choice(["fake", "21.0.2", "22.1.0"]),
+    # TODO: removed fake container for now, has to be adjusted to support sessions
+    type=click.Choice(["21.0.2", "22.1.0"]),
     help="fmriprep_version"
 )
 @click.option(
@@ -494,7 +495,7 @@ sub=${{subjects[$SLURM_ARRAY_TASK_ID]}}
 @click.option(
     "--sessions",
     multiple=True,
-    help="optional, name of sessions if fmriprep is run per session"
+    help="optional, name of sessions if fmriprep is run per session, multiple sessions allowed"
 )
 @click.option(
     "--reconstruction",
