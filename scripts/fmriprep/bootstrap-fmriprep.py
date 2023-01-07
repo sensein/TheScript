@@ -427,12 +427,16 @@ sub=${{subjects[$SLURM_ARRAY_TASK_ID]}}
 
 
 
-@click.command(help="Search TODO")
+@click.command(help="""
+The Script to create a project directory structure,
+connect with the input datalad dataset,
+and generate slurm and bash scripts to run the fmriprep workflow.
+""")
 @click.option(
     "-i",
     "--bidsinput",
     required=True,
-    help="path to the input dataset"
+    help="path to the input dataset (should be a datalad dataset)"
 )
 @click.option(
     "-p",
