@@ -1,3 +1,5 @@
+import json
+
 import click
 import datalad
 import datalad.api as dl
@@ -10,131 +12,155 @@ from urllib.request import urlopen
 
 # Add a script for merging outputs
 MERGE_POSTSCRIPT = "https://raw.githubusercontent.com/sensein/TheWay/main/scripts/fmriprep/merge_outputs_postscript.sh"
-# location of the fake container TODO
+# TODO: fake container should be adjusted to include sessions
 FAKE_CONTAINER_PATH = "/om2/user/djarecka/bootstrap/fake/fake_fmriprep_test_amd_latest.sif"
-#FAKE_CONTAINER_PATH = "/Users/dorota/tmp/fake_fmriprep_test_amd_latest.test"
 
-@click.command(help="Search TODO")
-@click.option(
-    "-i",
-    "--bidsinput",
-    required=True,
-    help="path to the input dataset"
-)
-@click.option(
-    "-p",
-    "--projectroot",
-    required=True,
-    help="path to the project dir"
-)
-@click.option(
-    "-t",
-    "--job_tmpdir",
-    required=True,
-    help="path to the job workdir"
-)
-@click.option(
-    "-v",
-    "--version",
-    required=True,
-    type=click.Choice(["fake", "21.0.2"]),
-    help="fmriprep_version"
-)
-@click.option(
-    "-s",
-    "--subjects_subset",
-    help="optional, pattern for subjects subset, e.g. sub-0*"
-)
-@click.option(
-    "-f",
-    "--fmriprep_opt_file",
-    required=True,
-    help="path to the fmriprep options"
-)
-@click.option(
-    "-e",
-    "--env_script",
-    required=True,
-    help="path to teh script for env setup"
-)
-@click.option(
-    "-w",
-    "--slurm_opt_file",
-    required=True,
-    help="path to the job workdir"
-)
-@click.option(
-    "-l",
-    "--freesurfer_license",
-    required=True,
-    help="path to the freesurfer license"
-)
-@click.option(
-    "-c",
-    "--copy_dir",
-    help="optional, path to the directory that will be copied to the code directory"
-)
-def bootstrap(bidsinput, projectroot, job_tmpdir, version, subjects_subset, fmriprep_opt_file,
-              env_script, slurm_opt_file, freesurfer_license, copy_dir):
-    print("bidsinput", bidsinput)
-    print("job_tmpdir", job_tmpdir)
-    print(f"copy_dir", copy_dir)
-    print(f"Using datalad version: {datalad.__version__}")
-    print(f"fmriprep version: {version}")
-    print(f"file with fmriprep options: {fmriprep_opt_file}")
-    print(f"file with SLURM options: {slurm_opt_file}")
-    print(f"freesurfer license file: {freesurfer_license}")
+class BootstrapScript:
 
-    # assuming bids_input_method = "clone"
-    bids_dataset_id = sb.check_output(
-        ["datalad", "-f", '{infos[dataset][id]}', "wtf", "-S", "dataset", "-d", f"{bidsinput}"]
-    ).decode('utf-8').strip()
-    print("BIDS_DATALAD_ID: ", bids_dataset_id)
-    projectroot = Path(projectroot)
-    projectroot.mkdir(parents=True)
-    os.chdir(projectroot)
-    analysis_dir = projectroot / "analysis"
-    dl.create(analysis_dir, cfg_proc=['yoda'])
-    os.chdir(analysis_dir)
+    def __init__(self, bidsinput, projectroot, job_tmpdir, version, subjects_subset,
+                 fmriprep_opt_file, env_script, slurm_opt_file, freesurfer_license,
+                 copy_dir, max_job, sessions, reconstruction):
+        self.bidsinput = bidsinput
+        self.projectroot = Path(projectroot)
+        self.analysis_dir = self.projectroot / "analysis"
+        self.job_tmpdir = Path(job_tmpdir)
+        self.version = version
+        self.subjects_subset = subjects_subset
+        self.fmriprep_opt_file = fmriprep_opt_file
+        self.env_script = env_script
+        self.slurm_opt_file = slurm_opt_file
+        self.freesurfer_license = freesurfer_license
+        self.copy_dir = copy_dir
+        if max_job is None:
+            self.max_job = max_job
+        else:
+            self.max_job = int(max_job)
+        self.sessions = sessions
+        self.reconstruction = reconstruction
 
-    input_store = f"ria+file://{projectroot}/input_ria"
-    output_store = f"ria+file://{projectroot}/output_ria"
-    dl.create_sibling_ria(output_store, name="output", new_store_ok=True)
-    dl.create_sibling_ria(input_store, name="input", storage_sibling=False, new_store_ok=True)
+    def settup_and_script(self):
+        # assuming bids_input_method = "clone"
+        bids_dataset_id = sb.check_output(
+            ["datalad", "-f", '{infos[dataset][id]}', "wtf", "-S", "dataset", "-d", f"{self.bidsinput}"]
+        ).decode('utf-8').strip()
+        print("BIDS_DATALAD_ID: ", bids_dataset_id)
+        self.job_tmpdir.mkdir(parents=True, exist_ok=True)
+        self.projectroot.mkdir(parents=True)
+        os.chdir(self.projectroot)
+        # analysis_dir = projectroot / "analysis"
+        dl.create(self.analysis_dir, cfg_proc=['yoda'])
+        os.chdir(self.analysis_dir)
 
-    print("Cloning input dataset into analysis dataset")
-    dl.clone(source=bidsinput, path=analysis_dir/"inputs/data", dataset=analysis_dir)
-    sb.run(['git', 'commit', '--amend',  '-m', 'Register input data dataset as a subdataset'])
-    if Path(subjects_subset).is_file():
-        raise NotImplementedError("subjects_subset from file not implemented")
-    else:
-        selected_dirs = (glob.glob(f'{analysis_dir}/inputs/data/{subjects_subset}'))
-        subjects = [el.split("/")[-1] for el in selected_dirs]
+        self.input_store = f"ria+file://{self.projectroot}/input_ria"
+        self.output_store = f"ria+file://{self.projectroot}/output_ria"
+        dl.create_sibling_ria(self.output_store, name="output", new_store_ok=True)
+        dl.create_sibling_ria(self.input_store, name="input", storage_sibling=False, new_store_ok=True)
 
-    print("!!!PWD ", os.getcwd())
-    print("subject subsets ", subjects)
+        print("Cloning input dataset into analysis dataset")
+        dl.clone(source=self.bidsinput, path=self.analysis_dir / "inputs/data",
+                 dataset=self.analysis_dir)
+        sb.run(['git', 'commit', '--amend', '-m', 'Register input data dataset as a subdataset'])
+        if Path(self.subjects_subset).is_file():
+            raise NotImplementedError("subjects_subset from file not implemented")
+        else:
+            selected_dirs = (glob.glob(f'{self.analysis_dir}/inputs/data/{self.subjects_subset}'))
+            self.subjects = [el.split("/")[-1] for el in selected_dirs]
 
-    if not subjects:
-        raise Exception("No subjects found in input data")
+        print("!!!PWD ", os.getcwd())
+        print("subject subsets ", self.subjects)
 
-    print("LIST OF SUBJECTS: ", subjects)
-    containers_ds = "///repronim/containers"
-    dl.install(dataset=analysis_dir, source=containers_ds)
-    # amend the previous commit with a nicer commit message
-    sb.run(['git', 'commit', '--amend', '-m', 'Register containers repo as a subdataset'])
+        if not self.subjects:
+            raise Exception("No subjects found in input data")
 
-    if version == "fake":
-        # TODO
-        shutil.copy(FAKE_CONTAINER_PATH,
-                    f"{analysis_dir}/containers/images/bids/bids-fmriprep--{version}.sing")
-        dl.save(path=f"containers/images/bids/bids-fmriprep--{version}.sing", message="added a fake image")
-        print("added a fake container")
-    else:
-        dl.get(f"containers/images/bids/bids-fmriprep--{version}.sing")
+        print("LIST OF SUBJECTS: ", self.subjects)
+        containers_ds = "///repronim/containers"
+        dl.install(dataset=self.analysis_dir, source=containers_ds)
+        # amend the previous commit with a nicer commit message
+        sb.run(['git', 'commit', '--amend', '-m', 'Register containers repo as a subdataset'])
 
-    containers_repo = f"{projectroot}/analysis/containers"
+        if self.version == "fake":
+            # TODO
+            shutil.copy(FAKE_CONTAINER_PATH,
+                        f"{self.analysis_dir}/containers/images/bids/bids-fmriprep--fake.sing")
+            dl.save(path=f"containers/images/bids/bids-fmriprep--fake.sing", message="added a fake image")
+            print("added a fake container")
+        else:
+            dl.get(f"containers/images/bids/bids-fmriprep--{self.version}.sing")
 
-    remove_all_text = """#!/bin/bash
+        self.containers_repo = f"{self.projectroot}/analysis/containers"
+
+        self._write_participant_scripts()
+
+        shutil.copy(self.freesurfer_license, self.analysis_dir / "code/license.txt")
+
+        if not self.copy_dir:
+            print("No COPY_DIR set, nothing is copied to code/")
+        else:
+            shutil.copytree(self.copy_dir, self.analysis_dir / "code", dirs_exist_ok=True)
+            print(f"content of {self.copy_dir} is copied to code/")
+
+        (self.analysis_dir / "logs").mkdir()
+
+        with (self.analysis_dir / ".gitignore").open("w") as f:
+            f.write(".SLURM_datalad_lock\n")
+            f.write("logs\n")
+
+        dl.save(message="Participant compute job implementation")
+        self.dataset_id = sb.check_output(
+            ["datalad", "-f", '{infos[dataset][id]}', "wtf", "-S", "dataset"]
+        ).decode('utf-8').strip()
+        print("D_id", self.dataset_id)
+
+        self._write_merge_script()
+
+        self.dssource = f"{self.input_store}#{self.dataset_id}"
+        self.pushgitremote = sb.check_output(["git", "remote", "get-url", "--push", "output"]).decode('utf-8').strip()
+
+        if not self.sessions:
+            if self.max_job and len(self.subjects) > self.max_job:
+                nn = len(self.subjects) // self.max_job
+                if len(self.subjects) % self.max_job:
+                    nn += 1
+                for ii in range(nn):
+                    subjects_part = self.subjects[ii*self.max_job:(ii+1)*self.max_job]
+                    self._write_slurm_script(subjects=subjects_part, slurm_filename=f"sbatch_array_{ii}.sh")
+            else:
+                self._write_slurm_script(subjects=self.subjects)
+        else: # if self.sessions
+            for ses in self.sessions:
+                # checking which subjects have the specific session
+                selected_dirs_ses = (glob.glob(f'{self.analysis_dir}/inputs/data/{self.subjects_subset}/ses-{ses}'))
+                subjects_ses = [el.split("/")[-2] for el in selected_dirs_ses]
+                print("SES, SUB", ses, subjects_ses)
+                if self.max_job and len(self.subjects) > self.max_job:
+                    nn = len(subjects_ses) // self.max_job
+                    if len(subjects_ses) % self.max_job:
+                        nn += 1
+                    for ii in range(nn):
+                        subjects_part = subjects_ses[ii * self.max_job:(ii + 1) * self.max_job]
+                        self._write_slurm_script(subjects=subjects_part, session=ses, slurm_filename=f"sbatch_array_ses-{ses}_{ii}.sh")
+                else:
+                    self._write_slurm_script(subjects=subjects_ses, session=ses, slurm_filename=f"sbatch_array_ses-{ses}.sh")
+
+
+        # I believe this is not needed: path=["code/", ".gitignore"],
+        dl.save(message="SLURM submission setup")
+
+        dl.drop(path="inputs/data", reckless="availability", recursive=True)
+        dl.push(to="input")
+        dl.push(to="output")
+
+        ria_dir_l = glob.glob(f"{self.projectroot}/output_ria/???/*")
+        if len(ria_dir_l) != 1:
+            raise Exception("ria_dir finding has to be fixed")
+        ria_dir = ria_dir_l[0]
+        (self.projectroot / "output_ria/alias").mkdir(parents=True)
+        (self.projectroot / "output_ria/alias/data").symlink_to(ria_dir)
+        print("Success")
+
+
+    def _write_participant_scripts(self):
+        remove_all_text = """#!/bin/bash
 
 set -eu
 data="${1:?Usage FOLDER SUBJ}"; shift
@@ -144,12 +170,20 @@ subid="${1:?Usage FOLDER SUBJ}"; shift
 "$@"
 """
 
-    with (analysis_dir / "code/remove-all-other-subjects-first.sh").open("w") as f:
-        f.write(remove_all_text)
+        with (self.analysis_dir / "code/remove-all-other-subjects-first.sh").open("w") as f:
+            f.write(remove_all_text)
 
-    (analysis_dir / "code/remove-all-other-subjects-first.sh").chmod(0o775)
+        (self.analysis_dir / "code/remove-all-other-subjects-first.sh").chmod(0o775)
 
-    main_participant_text = f"""echo I\\'m in $PWD using {sb.check_output(["which", "python"]).decode('utf-8').strip()}
+        for ses in self.sessions:
+            self._create_session_filter(ses)
+
+        part_session_text = "$5" if self.sessions else ""
+        fmri_session_text = "$3" if self.sessions else "none"
+
+
+        main_participant_text \
+            = f"""echo I\\'m in $PWD using {sb.check_output(["which", "python"]).decode('utf-8').strip()}
 # fail whenever something is fishy, use -x to get verbose logfiles
 PS4=+
 set -e -u -x
@@ -158,11 +192,12 @@ args=($@)
 dssource="$1"
 pushgitremote="$2"
 subid="$3"
+session={part_session_text}
 CONTAINERS_REPO="$4"
 echo SUBID: ${{subid}}
 echo TMPDIR: ${{TMPDIR}}
 echo JOB_TMPDIR: ${{JOB_TMPDIR}}
-echo fmriprep_version: {version}
+echo fmriprep_version: {self.version}
 echo dssource: ${{dssource}}
 echo CONTAINERS_REPO: ${{CONTAINERS_REPO}}
 echo pushgitremote: ${{pushgitremote}}
@@ -171,7 +206,7 @@ cd ${{JOB_TMPDIR}}
 # OR Run it on a shared network drive
 # cd /cbica/comp_space/{Path(os.environ['HOME']).name}
 # Used for the branch names and the temp dir
-BRANCH="${{subid}}"
+BRANCH="${{subid}}${{session}}"
 if [ ! -f ${{BRANCH}}.exists ]; then
     rm -rf ${{BRANCH}}
 
@@ -232,12 +267,11 @@ datalad run \
     -i code/fmriprep_run.sh \
     -i inputs/data/${{subid}} \
     -i "inputs/data/*json" \
-    -i containers/images/bids/bids-fmriprep--{version}.sing \
+    -i containers/images/bids/bids-fmriprep--{self.version}.sing \
     --explicit \
-    -o \\fmriprep-{version} \
-    -o \\freesurfer-{version} \
-    -m "fmriprep:{version} ${{subid}}" \
-    "code/remove-all-other-subjects-first.sh inputs/data "${{subid}}" code/fmriprep_run.sh ${{subid}} {version}"
+    -o \\derivatives \
+    -m "fmriprep:{self.version} ${{subid}}" \
+    code/remove-all-other-subjects-first.sh inputs/data "${{subid}}" code/fmriprep_run.sh ${{subid}} {self.version} "${{session}}"
 
 # file content first -- does not need a lock, no interaction with Git
 datalad push --to output-storage
@@ -258,148 +292,236 @@ echo SUCCESS
 # job handler should clean up workspace
 """
 
+        with (self.analysis_dir / "code/participant_job.sh").open("w") as f:
+            f.write('#!/bin/bash\n')
+            f.write(Path(self.env_script).read_text())
+            f.write(main_participant_text)
 
-    with (analysis_dir / "code/participant_job.sh").open("w") as f:
-        f.write('#!/bin/bash\n')
-        f.write(Path(env_script).read_text())
-        f.write(main_participant_text)
+        (self.analysis_dir / "code/participant_job.sh").chmod(0o755)
 
-    (analysis_dir / "code/participant_job.sh").chmod(0o755)
-
-
-    fmripreprun_beg_text = f"""#!/bin/bash
+        fmripreprun_beg_text = f"""#!/bin/bash
 PS4=+
 set -e -u -x
 subid="$1"
 fmriprep_version="$2"
+session={fmri_session_text}
 mkdir -p ${{PWD}}/.git/tmp/wkdir
-echo FMRIPREP_VER: {version}
+echo FMRIPREP_VER: {self.version}
 echo SUBID: ${{subid}}
+echo SESSION: ${{session}}
 echo PWD: ${{PWD}}
 echo In fmriprep_run before singularity;
 singularity run --cleanenv -B ${{PWD}}:/pwd \
-    containers/images/bids/bids-fmriprep--{version}.sing \
+    containers/images/bids/bids-fmriprep--{self.version}.sing \
     /pwd/inputs/data \
     /pwd/prep \
     participant \
     -w /pwd/.git/tmp/wkdir \
 """
+        if self.sessions: #TODO
+            fmripreprun_beg_text += "--bids-filter-file code/filter_${session}.json"
 
-    fmripreprun_end_text = f"""cd prep
-if [ -d ../fmriprep-{version} ]; then
-    rm -rf ../fmriprep-{version}
-fi
-mkdir ../fmriprep-{version}
-mv ${{subid}} ../fmriprep-{version}/
-if [ -f ${{subid}}.html ]; then
-    mv ${{subid}}.html ../fmriprep-{version}/
-fi
-if [ -d ../freesurfer-{version}  ]; then
-    rm -rf ../freesurfer-{version}
-fi
-mkdir ../freesurfer-{version}
-mv sourcedata/freesurfer  ../freesurfer-{version}/
+
+        fmripreprun_end_text = f"""cd prep
+
+mkdir ../derivatives
+mkdir ../derivatives/fmriprep
+
+mv * ../derivatives/fmriprep/
+
 cd ..
-rm -rf prep #.git/tmp/wkdir
+#rm -rf prep #.git/tmp/wkdir
+
+"""
+        if self.sessions:
+            fmripreprun_end_text += """cd derivatives/fmriprep
+
+if [ -d sourcedata/freesurfer/${subid} ]; then
+    mkdir sourcedata/freesurfer/ses-${session}
+    mv sourcedata/freesurfer/${subid} sourcedata/freesurfer/ses-${session}/
+    mv sourcedata/freesurfer/fsaverage sourcedata/freesurfer/ses-${session}/
+fi
+
+if [ -f ${subid}.html ]; then
+    mv ${subid}.html ${subid}_ses-${session}.html
+fi
+
+if [ -f dataset_description.json ]; then
+    mv dataset_description.json dataset_description_ses-${session}.json
+fi
+
+if [ -d ${subid}/figures ]; then
+    mv ${subid}/figures ${subid}/figures_ses-${session}
+fi
+
+if [ -d ${subid}/log ]; then
+    mv ${subid}/log ${subid}/log_ses-${session}
+fi
+
 """
 
-    with Path(fmriprep_opt_file).open() as f:
-        fmriprep_opt_text = f.read()
+        with Path(self.fmriprep_opt_file).open() as f:
+            fmriprep_opt_text = f.read()
 
-    with (analysis_dir / "code/fmriprep_run.sh").open("w") as f:
-        f.write(fmripreprun_beg_text)
-        f.write(fmriprep_opt_text)
-        f.write(fmripreprun_end_text)
+        with (self.analysis_dir / "code/fmriprep_run.sh").open("w") as f:
+            f.write(fmripreprun_beg_text)
+            f.write(fmriprep_opt_text)
+            f.write(fmripreprun_end_text)
 
-    (analysis_dir / "code/fmriprep_run.sh").chmod(0o775)
+        (self.analysis_dir / "code/fmriprep_run.sh").chmod(0o775)
 
-    shutil.copy(freesurfer_license, analysis_dir / "code/license.txt")
 
-    if not copy_dir:
-        print("No COPY_DIR set, nothing is copied to code/")
-    else:
-        shutil.copytree(copy_dir, analysis_dir / "code", dirs_exist_ok=True)
-        print(f"content of {copy_dir} is copied to code/")
-
-    (analysis_dir / "logs").mkdir()
-
-    with (analysis_dir / ".gitignore").open("w") as f:
-        f.write(".SLURM_datalad_lock\n")
-        f.write("logs\n")
-
-    dl.save(message="Participant compute job implementation")
-    dataset_id = sb.check_output(
-        ["datalad", "-f", '{infos[dataset][id]}', "wtf", "-S", "dataset"]
-    ).decode('utf-8').strip()
-
-    merge_text_start = f"""#!/bin/bash
+    def _write_merge_script(self):
+        merge_text_start = f"""#!/bin/bash
 PS4=+
 set -e -u -x
-outputsource={output_store}#{dataset_id}
-cd {projectroot}
+outputsource={self.output_store}#{self.dataset_id}
+cd {self.projectroot}
 """
-    with urlopen(MERGE_POSTSCRIPT) as f:
-        merge_text_file = f.read().decode('utf-8')
+        with urlopen(MERGE_POSTSCRIPT) as f:
+            merge_text_file = f.read().decode('utf-8')
 
-    with (analysis_dir / "code/merge_outputs.sh").open("w") as f:
-        f.write(merge_text_start)
-        f.write(merge_text_file)
+        with (self.analysis_dir / "code/merge_outputs.sh").open("w") as f:
+            f.write(merge_text_start)
+            f.write(merge_text_file)
 
-    (analysis_dir / "code/merge_outputs.sh").chmod(0o775)
-
-    dssource = f"{input_store}#{dataset_id}"
-    pushgitremote = sb.check_output(["git", "remote", "get-url", "--push", "output"]).decode('utf-8').strip()
+        (self.analysis_dir / "code/merge_outputs.sh").chmod(0o775)
 
 
-    # checking the length of the subjects list
-    subjects_list = subjects
-    subjects_len = len(subjects)
+    def _create_session_filter(self, session):
+        """ creating filter files for sessions, adding a reconstruction option if provided"""
+        filter_dict = {}
+        for (key, suf, tp) in [("bold", "bold", "func"), ("t1w", "T1w", "anat"), ("t2w", "T2w", "anat")]:
+            filter_dict[key] = {"datatype": tp, "suffix": suf, "session": session}
+        # TODO: check with Debbie
+        filter_dict["fmap"] = {"datatype": "fmap", "session": session}
+        if self.reconstruction:
+            filter_dict["bold"]["reconstruction"] = self.reconstruction
 
-    with Path(slurm_opt_file).open() as f:
-        slurm_opt_text = f.read()
+        with (self.analysis_dir / f"code/filter_{session}.json").open("w") as f:
+            f.write(json.dumps(filter_dict))
 
-    slurm_main_text = f"""#SBATCH --output=logs/array_%A_%a.out
+    def _write_slurm_script(self, subjects, session=None, slurm_filename="sbatch_array.sh"):
+        with Path(self.slurm_opt_file).open() as f:
+            slurm_opt_text = f.read()
+
+        slurm_session_text = session if session else ""
+
+        slurm_main_text = f"""#SBATCH --output=logs/array_%A_%a.out
 #SBATCH --error=logs/array_%A_%a.err
 
-#SBATCH --export=DSLOCKFILE={projectroot}/analysis/.SLURM_datalad_lock,JOB_TMPDIR={job_tmpdir}
+#SBATCH --export=DSLOCKFILE={self.projectroot}/analysis/.SLURM_datalad_lock,JOB_TMPDIR={self.job_tmpdir}
 
-#SBATCH --array=0-{subjects_len-1}
+#SBATCH --array=0-{len(subjects) - 1}
 
-subjects=({' '.join(subjects_list)})
+subjects=({' '.join(subjects)})
 sub=${{subjects[$SLURM_ARRAY_TASK_ID]}}
 
-{projectroot}/analysis/code/participant_job.sh {dssource} {pushgitremote} $sub {containers_repo}
-    """
+{self.projectroot}/analysis/code/participant_job.sh {self.dssource} {self.pushgitremote} $sub {self.containers_repo} {slurm_session_text}
+"""
+
+        with (self.analysis_dir / f"code/{slurm_filename}").open("w") as f:
+            f.write("#!/bin/bash\n")
+            f.write(slurm_opt_text)
+            f.write(slurm_main_text)
 
 
-    with (analysis_dir / "code/sbatch_array.sh").open("w") as f:
-        f.write("#!/bin/bash\n")
-        f.write(slurm_opt_text)
-        f.write(slurm_main_text)
 
+@click.command(help="Search TODO")
+@click.option(
+    "-i",
+    "--bidsinput",
+    required=True,
+    help="path to the input dataset"
+)
+@click.option(
+    "-p",
+    "--projectroot",
+    required=True,
+    help="path to the project dir"
+)
+@click.option(
+    "-t",
+    "--job_tmpdir",
+    required=True,
+    help="path to the job workdir"
+)
+@click.option(
+    "-v",
+    "--version",
+    required=True,
+    # TODO: removed fake container for now, has to be adjusted to support sessions
+    type=click.Choice(["21.0.2", "22.1.0"]),
+    help="fmriprep_version"
+)
+@click.option(
+    "-s",
+    "--subjects_subset",
+    help="optional, pattern for subjects subset, e.g. sub-0*"
+)
+@click.option(
+    "-f",
+    "--fmriprep_opt_file",
+    required=True,
+    help="path to the fmriprep options"
+)
+@click.option(
+    "-e",
+    "--env_script",
+    required=True,
+    help="path to teh script for env setup"
+)
+@click.option(
+    "-w",
+    "--slurm_opt_file",
+    required=True,
+    help="path to the job workdir"
+)
+@click.option(
+    "-l",
+    "--freesurfer_license",
+    required=True,
+    help="path to the freesurfer license"
+)
+@click.option(
+    "-c",
+    "--copy_dir",
+    help="optional, path to the directory that will be copied to the code directory"
+)
+@click.option(
+    "--max_job",
+    help="optional, maximal number of jobs run on slurm"
+)
+@click.option(
+    "--sessions",
+    multiple=True,
+    help="optional, name of sessions if fmriprep is run per session, multiple sessions allowed"
+)
+@click.option(
+    "--reconstruction",
+    type=click.Choice(["unco"]),
+    help="optional, type of reconstructions"
+)
+def main(bidsinput, projectroot, job_tmpdir, version, subjects_subset, fmriprep_opt_file,
+              env_script, slurm_opt_file, freesurfer_license, copy_dir, max_job, sessions,
+              reconstruction):
+    print("bidsinput", bidsinput)
+    print("job_tmpdir", job_tmpdir)
+    print(f"copy_dir", copy_dir)
+    print(f"Using datalad version: {datalad.__version__}")
+    print(f"fmriprep version: {version}")
+    print(f"file with fmriprep options: {fmriprep_opt_file}")
+    print(f"file with SLURM options: {slurm_opt_file}")
+    print(f"freesurfer license file: {freesurfer_license}")
+    print(f"sessions = {sessions}")
 
-    # todo: dssource, pushgitremote has not changed; eo_args is not used
-    # dssource = "${input_store}#$(datalad -f '{infos[dataset][id]}' wtf -S dataset)"
-    # pushgitremote =$(git remote get-url --push output)
-    # eo_args = "-e ${PWD}/logs -o ${PWD}/logs"
-    print("D_id", dataset_id)
-    # I believe this is not needed: path=["code/", ".gitignore"],
-    dl.save(message="SLURM submission setup")
-
-    dl.drop(path="inputs/data", reckless="availability", recursive=True)
-    dl.push(to="input")
-    dl.push(to="output")
-
-    ria_dir_l = glob.glob(f"{projectroot}/output_ria/???/*")
-    if len(ria_dir_l) != 1:
-        raise Exception("ria_dir finding has to be fixed")
-    ria_dir = ria_dir_l[0]
-    (projectroot / "output_ria/alias").mkdir(parents=True)
-    (projectroot / "output_ria/alias/data").symlink_to(ria_dir)
-
-    print("Success")
-
+    bs = BootstrapScript(bidsinput=bidsinput, projectroot=projectroot, job_tmpdir=job_tmpdir,
+                         version=version, subjects_subset=subjects_subset,
+                         fmriprep_opt_file=fmriprep_opt_file, env_script=env_script,
+                         slurm_opt_file=slurm_opt_file, freesurfer_license=freesurfer_license,
+                         copy_dir=copy_dir, max_job=max_job, sessions=sessions, reconstruction=reconstruction)
+    bs.settup_and_script()
 
 
 if __name__ == '__main__':
-    bootstrap()
+    main()
