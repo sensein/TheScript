@@ -1,37 +1,71 @@
 ## How to use bootstrap-fmriprep on slurm
 
-#### 1) Clone the repo
+#### Repository structure
 
-- naviagte to openmind_slurm branch to use bootstrap-fmriprep on slurm as described below
-
-#### 2) navigate to TheWay/scripts/cubic/config_examples/bootstrap-fmriprep and 
-
-- edit env_setup.sh so that it will activated an environment with datalad installed
-- edit slurm_opt.txt so that it has your required slurm job specifications
-- edit fmriprep_opt.txt so that it has your required fmriprep parameters
-**if you are not using a bids filter file, remove the line "--bids-filter-file code/fmriprep_filter.json"*
-**don't need to change the freesurfer license file path, this can be specified later*
+In [scripts/fmriprep/](https://github.com/sensein/TheScript/tree/main/scripts/fmriprep) you will find:
+- `bootstrap-fmriprep.py` -  the main script that create the project structure and generate slurm and bash scripts to run the simulation
+- `config_examples` directory with the examples of configuration files that should be adjusted to the specific use case:
+    - `env_setup.sh` - loads singularity and activates an environment with datalad installed
+    - `slurm_opt.txt` - contains slurm job specifications
+    - `fmriprep_opt.txt` - contains fmriprep specific parameters
 
 
-#### 3) navigate to /TheWay/scripts/cubic and using an environment with datalad installed, run the sbatch_fmriprep.sh script, for example:
+#### Running the main script
 
-    ./bootstrap-fmriprep.sh \
-    -i /om/scratch/Tue/jsmentch/merlin_fmriprep/ds001110 \
-    -t /om/scratch/Tue/jsmentch/merlin_fmriprep/working \
-    -v 21.0.1 \
-    -e /om/scratch/Tue/jsmentch/merlin_fmriprep/TheWay/scripts/cubic/config_examples/bootstrap-fmriprep/env_setup.sh \
-    -f /om/scratch/Tue/jsmentch/merlin_fmriprep/TheWay/scripts/cubic/config_examples/bootstrap-fmriprep/fmriprep_opt.txt \
-    -w /om/scratch/Tue/jsmentch/merlin_fmriprep/TheWay/scripts/cubic/config_examples/bootstrap-fmriprep/slurm_opt.txt \
-    -p /om/scratch/Tue/jsmentch/merlin_fmriprep/project_dir \
-    -s sub-* \
+In order to run the script you need to have `Python 3.7+` with `datalad` and `click`.
+
+When you run the script with `--help` you will have the list of all arguments that are supported:
+
+    Options:
+    -i, --bidsinput TEXT           path to the input dataset  [required]
+    -p, --projectroot TEXT         path to the project dir  [required]
+    -t, --job_tmpdir TEXT          path to the job workdir  [required]
+    -v, --version [21.0.2|22.1.0]  fmriprep_version  [required]
+    -s, --subjects_subset TEXT     optional, pattern for subjects subset, e.g.
+                                 sub-0*
+    -f, --fmriprep_opt_file TEXT   path to the fmriprep options  [required]
+    -e, --env_script TEXT          path to teh script for env setup  [required]
+    -w, --slurm_opt_file TEXT      path to the job workdir  [required]
+    -l, --freesurfer_license TEXT  path to the freesurfer license  [required]
+    -c, --copy_dir TEXT            optional, path to the directory that will be
+                                 copied to the code directory
+    --max_job TEXT                 optional, maximal number of jobs run on slurm
+    --sessions TEXT                optional, name of sessions if fmriprep is run
+                                 per session, multiple sessions allowed
+    --reconstruction [unco]        optional, type of reconstructions
+    --help                         Show this message and exit.
+
+Example of running the script on `OpenMind`:
+
+    python bootstrap-fmriprep_class.py \
+    -i /om2/scratch/Wed/djarecka/data_test/mmc_datalad1 \
+    -t /om2/scratch/Wed/djarecka/deb_21_jan2  
+    -v 21.0.2 \ 
+    -e /om2/user/djarecka/bootstrap/env_setup.sh \
+    -f /om2/user/djarecka/bootstrap/fmriprep_opt_debbie.txt \
+    -w /om2/user/djarecka/bootstrap/slurm_opt_debbie.txt \
+    -p /om2/user/djarecka/bootstrap/deb_21_jan2 \
+    -s sub-MM31*  \
     -l /om2/user/jsmentch/data/freesurfer_license.txt
 
-  **the project_dir (-p) should not exist, it will be created as a new dataset*
-  **the working directory (-t) should be an existing path*
-#### 4) navigate to your new project_dir/analysis directory
-#### 5) submit your job array to run fmriprep
-  **chmod u+x code/merge_outputs.sh if it is not executable*
-  **run from the analysis directory eg:*
-  
-      sbatch code/sbatch_array.sh
-#### 6) after the jobs finish, run ./code/merge_outputs.sh to merge the outputs
+Both, `projectroot` (-p) and `job_tmpdir` (-t) will be created.
+
+
+#### Running the fmriprep workflow
+
+- Navigate to `<projectroot>/analysis`
+- Run sbatch script (or scripts) that were created in the `code` directory using `sbatch` command, e.g.:
+    sbatch code/sbatch_array.sh
+
+#### Merging the output
+
+In order to merge the output at the end of all runs, run the merging code:
+ 
+    `./code/merge_outputs.sh`
+    
+The script will create a new directory  `<projectroot>/merge_ds`, where you can find directories with results (`derivatives`) and inputs. In order to check the results you need to use `datalad` to get the files, e.g. `datalad get derivatives`
+
+
+## Provenance
+The code was updated from the original code from the PennLINC/TheWay repository, that was based on [Wagner at al., 2022: FAIRly big: A framework for computationally reproducible processing of large-scale data](https://www.nature.com/articles/s41597-022-01163-2)
+
