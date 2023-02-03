@@ -356,7 +356,8 @@ fi
             # removing other sessions, should be fixed in fmriprep 23
 
             fmripreprun_end_text += """
-find ${subid}/ses-* -type d -not -name 'ses-${session}'  -print0 | xargs -0  -I {} rm -rfv {}
+echo PWD before find: ${PWD}
+find ${subid}/ses-* -type d | egrep -v /ses-${session} | xargs rm -rf
 
 """
 
@@ -452,7 +453,7 @@ sub=${{subjects[$SLURM_ARRAY_TASK_ID]}}
     "--version",
     required=True,
     # TODO: removed fake container for now, has to be adjusted to support sessions
-    type=click.Choice(["21.0.2", "22.1.0"]),
+    type=click.Choice(["21.0.2", "22.1.0", "fake"]),
     help="fmriprep_version"
 )
 @click.option(
