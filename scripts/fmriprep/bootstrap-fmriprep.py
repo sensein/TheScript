@@ -314,7 +314,7 @@ echo In fmriprep_run before singularity;
 singularity run --cleanenv -B ${{PWD}}:/pwd \
     containers/images/bids/bids-fmriprep--{self.version}.sing \
     /pwd/inputs/data \
-    /pwd/prep \
+    /pwd/derivatives/fmriprep \
     participant \
     -w /pwd/.git/tmp/wkdir \
 """
@@ -322,20 +322,13 @@ singularity run --cleanenv -B ${{PWD}}:/pwd \
             fmripreprun_beg_text += "--bids-filter-file code/filter_${session}.json"
 
 
-        fmripreprun_end_text = f"""cd prep
+        fmripreprun_end_text = f"""cd derivatives/fmriprep
 
-mkdir ../derivatives
-mkdir ../derivatives/fmriprep
-
-mv * ../derivatives/fmriprep/
-
-cd ..
 #rm -rf prep #.git/tmp/wkdir
 
 """
         if self.sessions:
-            fmripreprun_end_text += """cd derivatives/fmriprep
-
+            fmripreprun_end_text += """
 if [ -d sourcedata/freesurfer/${subid} ]; then
     mkdir sourcedata/freesurfer/ses-${session}
     mv sourcedata/freesurfer/${subid} sourcedata/freesurfer/ses-${session}/
@@ -359,6 +352,15 @@ if [ -d ${subid}/log ]; then
 fi
 
 """
+
+            # removing other sessions, should be fixed in fmriprep 23
+
+            fmripreprun_end_text += """
+echo PWD before find: ${PWD}
+find ${subid}/ses-* -type d | egrep -v /ses-${session} | xargs rm -rf
+
+"""
+
 
         with Path(self.fmriprep_opt_file).open() as f:
             fmriprep_opt_text = f.read()
@@ -455,7 +457,7 @@ and generate slurm and bash scripts to run the fmriprep workflow.
     "--version",
     required=True,
     # TODO: removed fake container for now, has to be adjusted to support sessions
-    type=click.Choice(["21.0.2", "22.1.0"]),
+    type=click.Choice(["21.0.2", "22.1.0", "fake"]),
     help="fmriprep_version"
 )
 @click.option(
