@@ -183,7 +183,8 @@ subid="${1:?Usage FOLDER SUBJ}"; shift
 
 
         main_participant_text \
-            = f"""echo I\\'m in $PWD using {sb.check_output(["which", "python"]).decode('utf-8').strip()}
+            = f"""echo I\\'m in $PWD using $(datalad --version)
+echo git-annex ver: $(git annex version)
 # fail whenever something is fishy, use -x to get verbose logfiles
 PS4=+
 set -e -u -x
