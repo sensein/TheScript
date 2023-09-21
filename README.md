@@ -20,7 +20,7 @@ When you run the script with `--help` you will have the list of all arguments th
     -i, --bidsinput TEXT           path to the input dataset  [required]
     -p, --projectroot TEXT         path to the project dir  [required]
     -t, --job_tmpdir TEXT          path to the job workdir  [required]
-    -v, --version [21.0.2|22.1.0]  fmriprep_version  [required]
+    -v, --version [23.1.4|21.0.2|22.1.0]  fmriprep_version  [required]
     -s, --subjects_subset TEXT     optional, pattern for subjects subset, e.g.
                                  sub-0*
     -f, --fmriprep_opt_file TEXT   path to the fmriprep options  [required]
@@ -37,7 +37,7 @@ When you run the script with `--help` you will have the list of all arguments th
 
 Example of running the script on `OpenMind`:
 
-    python bootstrap-fmriprep_class.py \
+    python bootstrap-fmriprep.py \
     -i /om2/scratch/Wed/djarecka/data_test/mmc_datalad1 \
     -t /om2/scratch/Wed/djarecka/deb_21_jan2  
     -v 21.0.2 \ 
@@ -55,13 +55,14 @@ Both, `projectroot` (-p) and `job_tmpdir` (-t) will be created.
 
 - Navigate to `<projectroot>/analysis`
 - Run sbatch script (or scripts) that were created in the `code` directory using `sbatch` command, e.g.:
-    sbatch code/sbatch_array.sh
-
+```
+sbatch code/sbatch_array.sh
+```
 #### Merging the output
 
 In order to merge the output at the end of all runs, run the merging code:
  
-    `./code/merge_outputs.sh`
+    ./code/merge_outputs.sh
     
 The script will create a new directory  `<projectroot>/merge_ds`, where you can find directories with results (`derivatives`) and inputs. In order to check the results you need to use `datalad` to get the files, e.g. `datalad get derivatives`
 
