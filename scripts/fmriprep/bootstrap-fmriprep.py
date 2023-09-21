@@ -458,7 +458,7 @@ and generate slurm and bash scripts to run the fmriprep workflow.
     "--version",
     required=True,
     # TODO: removed fake container for now, has to be adjusted to support sessions
-    type=click.Choice(["21.0.2", "22.1.0", "fake"]),
+    type=click.Choice(["21.0.2", "22.1.0", "23.4.1", "fake"]),
     help="fmriprep_version"
 )
 @click.option(
